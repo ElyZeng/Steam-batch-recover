@@ -127,34 +127,20 @@ class SteamGuiAutomator:
         try:
             self._focus_steam_window(on_progress)
             menu_region = self._top_left_region()
-            menu_clicked = self._click_first_optional(
-                ["en_03_SteamMenu_TopLeft.png", "en_04_SteamMenuClick_TopLeft.png"],
-                "Steam top-left menu",
-                timeout_seconds=10.0,
-                region=menu_region,
-            )
+            menu_clicked = self._open_steam_menu(menu_region)
             if not menu_clicked:
-                self._emit(
-                    on_progress,
-                    "Top-left Steam menu not matched. Manual takeover: open Steam menu now, waiting 15 seconds...",
+                self._wait_for_restore_wizard_manual(on_progress)
+            else:
+                restore_clicked = self._click_first_optional(
+                    ["en_05_Game_Restore.png", "en_06_Game_RestoreClick.png.png"],
+                    "Restore Game Backup menu item",
+                    timeout_seconds=8.0,
+                    region=menu_region,
                 )
-                end_time = time.monotonic() + self.settings.manual_takeover_seconds
-                while time.monotonic() < end_time:
-                    if self._wait_for_any(
-                        ["en_05_Game_Restore.png", "en_06_Game_RestoreClick.png.png"],
-                        0.6,
-                        "Restore menu during manual takeover",
-                        raise_on_timeout=False,
-                        region=menu_region,
-                    ) is not None:
-                        break
-                    time.sleep(0.2)
+                if not restore_clicked:
+                    self._emit(on_progress, "Restore menu item not matched. Switching to manual wizard takeover.")
+                    self._wait_for_restore_wizard_manual(on_progress)
 
-            self._click_first(
-                ["en_05_Game_Restore.png", "en_06_Game_RestoreClick.png.png"],
-                "Restore Game Backup menu item",
-                region=menu_region,
-            )
             self._click_first_optional(["en_07_Find_backup_path.png"], "Find backup path title", timeout_seconds=8.0)
             self._click_first(["en_08_browse_path.png", "en_09_browse_pathClick.png"], "Browse button")
             self._click_first(["en_11_file_explorer_path_input.png"], "File explorer path input")
@@ -175,6 +161,47 @@ class SteamGuiAutomator:
             self._emit(on_progress, "Restore step completed, moving to next item.")
         except pyautogui.FailSafeException as exc:
             raise SteamGuiAutomationError(auto_fail_safe_message) from exc
+
+    def _open_steam_menu(self, menu_region: tuple[int, int, int, int]) -> bool:
+        self._emit(self._progress_callback, "Opening Steam menu and hovering into dropdown area.")
+        found = self._wait_for_any(
+            ["en_03_SteamMenu_TopLeft.png", "en_04_SteamMenuClick_TopLeft.png"],
+            10.0,
+            "Steam top-left menu",
+            raise_on_timeout=False,
+            region=menu_region,
+        )
+        if found is None:
+            return False
+
+        center = pyautogui.center(found)
+        pyautogui.moveTo(center.x, center.y, duration=0.15)
+        pyautogui.click()
+        time.sleep(0.25)
+
+        hover_x = min(center.x + 24, menu_region[0] + menu_region[2] - 10)
+        hover_y = min(center.y + 90, menu_region[1] + menu_region[3] - 10)
+        pyautogui.moveTo(hover_x, hover_y, duration=0.18)
+        time.sleep(self.settings.post_click_pause_seconds)
+        self._emit(self._progress_callback, f"Steam menu hover hold at x={hover_x}, y={hover_y}")
+        return True
+
+    def _wait_for_restore_wizard_manual(self, on_progress: callable | None) -> None:
+        self._emit(
+            on_progress,
+            "Manual takeover: open Steam > Restore Game Backup... yourself now. Waiting for restore wizard for 20 seconds...",
+        )
+        found = self._wait_for_any(
+            ["en_07_Find_backup_path.png", "en_08_browse_path.png", "en_09_browse_pathClick.png"],
+            max(20.0, self.settings.manual_takeover_seconds),
+            "Restore wizard during manual takeover",
+            raise_on_timeout=False,
+        )
+        if found is None:
+            raise SteamGuiAutomationError(
+                "Manual takeover timed out. Steam restore wizard did not appear. Please open 'Steam > Restore Game Backup...' during the takeover window."
+            )
+        self._emit(on_progress, "Restore wizard detected after manual takeover.")
 
     def _click_first(self, image_names: list[str], step_name: str, region: tuple[int, int, int, int] | None = None) -> None:
         self._emit(self._progress_callback, f"Waiting for step: {step_name} | templates={image_names}")

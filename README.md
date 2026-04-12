@@ -28,14 +28,26 @@ pip install -r requirements.txt
 powershell -ExecutionPolicy Bypass -File .\build_exe.ps1
 ```
 
-After build completes, run:
+After build completes, two versions are available:
 
+**Multi-file version** (faster startup):
 ```powershell
 .\dist\SteamGameBatchRecover\SteamGameBatchRecover.exe
 ```
+- Requires folder structure: `SteamGameBatchRecover/` + `_internal/`
+- First run: ~1-2 seconds startup time
+- Best for: development, testing on same machine
+
+**Single-file version** (fully portable):
+```powershell
+.\dist\SteamGameBatchRecover-standalone.exe
+```
+- Completely self-contained, no dependencies
+- First run: ~3-5 seconds (unpacks temporary files)
+- Subsequent runs: ~1-2 seconds
+- Best for: distribution, testing on different machines
 
 Packaging notes:
-- The generated EXE is for Windows only.
 - Build output folders are `build/` and `dist/`.
 - If SmartScreen appears on another machine, choose More info > Run anyway for internal testing.
 
@@ -47,7 +59,9 @@ Trigger options:
 - Manual trigger: Actions > Build Windows EXE > Run workflow
 - Tag trigger: push a tag like `v1.0.0`
 
-After workflow completes, download artifact `SteamGameBatchRecover-windows-exe` from the workflow run page.
+After workflow completes, two artifacts are available from the workflow run page:
+- `SteamGameBatchRecover-multifile`: Faster startup version (requires _internal folder)
+- `SteamGameBatchRecover-standalone`: Single EXE, fully portable
 
 ## Local EXE Build vs GitHub Actions EXE Artifact
 

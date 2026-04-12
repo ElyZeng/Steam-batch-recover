@@ -61,6 +61,24 @@ if ($LASTEXITCODE -ne 0) {
   throw "PyInstaller single-file build failed with exit code $LASTEXITCODE"
 }
 
+# Build template diagnostic tool (console utility)
+Write-Host "Building template diagnostic utility..."
+& $python -m PyInstaller `
+  --noconfirm `
+  --onefile `
+  --console `
+  --name SteamTemplateTester `
+  --hidden-import cv2 `
+  --hidden-import numpy `
+  opencv_template_test.py
+
+if ($LASTEXITCODE -ne 0) {
+  throw "PyInstaller template tester build failed with exit code $LASTEXITCODE"
+}
+
+Copy-Item -Force "dist/SteamTemplateTester.exe" "dist/SteamGameBatchRecover/SteamTemplateTester.exe"
+
 Write-Host "Build finished."
 Write-Host "Multi-file version: dist/SteamGameBatchRecover/ (faster, requires _internal folder)"
 Write-Host "Single-file version: dist/SteamGameBatchRecover-standalone.exe (portable, self-contained)"
+Write-Host "Template diagnostic utility: dist/SteamTemplateTester.exe (also copied into multifile folder)"

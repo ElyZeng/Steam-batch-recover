@@ -327,12 +327,6 @@ class SteamBatchRecoverApp(tk.Tk):
             messagebox.showerror(self._t("steam_not_found_title"), self._t("steam_not_found"))
             return
 
-        try:
-            subprocess.Popen([str(steam_path)], shell=False)
-        except OSError as exc:
-            messagebox.showerror(self._t("steam_not_found_title"), self._t("steam_launch_fail", error=str(exc)))
-            return
-
         locale_code = self.locale_var.get().lower()
         template_language = "en" if locale_code == "en" else "en"
         if template_language != locale_code:
@@ -354,7 +348,7 @@ class SteamBatchRecoverApp(tk.Tk):
     def _steam_restore_worker(self, steam_path: Path, restore_paths: list[Path], templates_root: Path) -> None:
         automator = SteamGuiAutomator(templates_root=templates_root)
         try:
-            automator.run_batch_restore(steam_path, restore_paths, self._queue_log)
+            automator.run_batch_restore(steam_path, restore_paths, self._queue_log, steam_already_running=False)
         except SteamGuiAutomationError as exc:
             self.after(0, lambda: self._steam_restore_failed(str(exc)))
             return

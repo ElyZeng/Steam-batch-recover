@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import subprocess
+import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import pyautogui
+import pygetwindow
 
 
 auto_fail_safe_message = (
@@ -19,10 +22,12 @@ class SteamGuiAutomationError(RuntimeError):
 
 @dataclass(slots=True)
 class SteamGuiSettings:
-    confidence: float = 0.84
-    step_timeout_seconds: float = 20.0
+    confidence: float = 0.75
+    step_timeout_seconds: float = 30.0
     restore_wait_timeout_seconds: float = 1200.0
-    post_click_pause_seconds: float = 0.5
+    post_click_pause_seconds: float = 0.8
+    steam_initial_wait_seconds: float = 8.0
+    debug_screenshots: bool = True
 
 
 class SteamGuiAutomator:
@@ -37,24 +42,46 @@ class SteamGuiAutomator:
         steam_executable: Path,
         backup_paths: list[Path],
         on_progress: callable | None = None,
+        steam_already_running: bool = False,
     ) -> None:
         if not backup_paths:
             raise SteamGuiAutomationError("No backup path selected.")
 
-        self._emit(on_progress, "Launching Steam...")
-        try:
-            subprocess.Popen([str(steam_executable)], shell=False)
-        except OSError as exc:
-            raise SteamGuiAutomationError(f"Failed to launch Steam: {exc}") from exc
+        screenshot = pyautogui.screenshot()
+        self._emit(on_progress, f"Screen capture size: {screenshot.width}x{screenshot.height} (physical pixels)")
 
-        time.sleep(4)
+        if not steam_already_running:
+            self._emit(on_progress, "Launching Steam...")
+            try:
+                subprocess.Popen([str(steam_executable)], shell=False)
+            except OSError as exc:
+                raise SteamGuiAutomationError(f"Failed to launch Steam: {exc}") from exc
+            time.sleep(self.settings.steam_initial_wait_seconds)
+
+        self._focus_steam_window(on_progress)
 
         for index, backup_path in enumerate(backup_paths, start=1):
             self._emit(on_progress, f"[{index}/{len(backup_paths)}] Restoring from: {backup_path}")
             self._run_single_restore(backup_path, on_progress)
 
+    def _focus_steam_window(self, on_progress: callable | None) -> None:
+        try:
+            windows = pygetwindow.getWindowsWithTitle("Steam")
+            if windows:
+                win = windows[0]
+                if win.isMinimized:
+                    win.restore()
+                win.activate()
+                time.sleep(0.5)
+                self._emit(on_progress, f"Steam window focused: {win.title!r}")
+            else:
+                self._emit(on_progress, "Steam window not found by title, proceeding anyway.")
+        except Exception as exc:
+            self._emit(on_progress, f"Window focus attempt failed (non-fatal): {exc}")
+
     def _run_single_restore(self, backup_path: Path, on_progress: callable | None) -> None:
         try:
+            self._focus_steam_window(on_progress)
             self._click_first(["en_03_SteamMenu_TopLeft.png", "en_04_SteamMenuClick_TopLeft.png"], "Steam top-left menu")
             self._click_first(["en_05_Game_Restore.png", "en_06_Game_RestoreClick.png.png"], "Restore Game Backup menu item")
             self._click_first(["en_08_browse_path.png", "en_09_browse_pathClick.png"], "Browse button")
@@ -109,14 +136,29 @@ class SteamGuiAutomator:
                 template = self.templates_root / image_name
                 if not template.exists():
                     continue
-                found = pyautogui.locateOnScreen(str(template), confidence=self.settings.confidence)
+                try:
+                    found = pyautogui.locateOnScreen(str(template), confidence=self.settings.confidence)
+                except Exception:
+                    found = None
                 if found is not None:
                     return found
-            time.sleep(0.25)
+            time.sleep(0.3)
 
+        if self.settings.debug_screenshots:
+            self._save_debug_screenshot(step_name)
         if raise_on_timeout:
-            raise SteamGuiAutomationError(f"Timed out while waiting for {step_name}.")
+            raise SteamGuiAutomationError(f"Timed out while waiting for: {step_name}")
         return None
+
+    def _save_debug_screenshot(self, step_name: str) -> None:
+        try:
+            safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in step_name)
+            debug_dir = Path(tempfile.gettempdir()) / "SteamBatchRecover_debug"
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            out_path = debug_dir / f"fail_{safe_name}_{int(time.time())}.png"
+            pyautogui.screenshot(str(out_path))
+        except Exception:
+            pass
 
     @staticmethod
     def _emit(callback: callable | None, message: str) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import subprocess
 import tempfile
 import time
@@ -40,6 +41,7 @@ class SteamGuiAutomator:
         self.templates_root = templates_root
         self.settings = settings or SteamGuiSettings()
         self._progress_callback = None
+        _enable_dpi_awareness()
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = 0.15
 
@@ -357,6 +359,17 @@ class SteamGuiAutomator:
     def _top_left_region(self) -> tuple[int, int, int, int]:
         screen = pyautogui.size()
         return (0, 0, int(screen.width * 0.55), int(screen.height * 0.55))
+
+
+def _enable_dpi_awareness() -> None:
+    # Keep screen-capture coordinates and mouse coordinates in the same pixel space.
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
 
     def _save_debug_screenshot(self, step_name: str) -> Path | None:
         try:

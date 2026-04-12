@@ -7,6 +7,63 @@ from pathlib import Path
 import cv2
 
 
+def _extract_red_box_bounds(bgr_image):
+    hsv = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2HSV)
+    mask1 = cv2.inRange(hsv, (0, 80, 80), (10, 255, 255))
+    mask2 = cv2.inRange(hsv, (160, 80, 80), (179, 255, 255))
+    mask = cv2.bitwise_or(mask1, mask2)
+    mask = cv2.medianBlur(mask, 5)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+
+    best = None
+    best_area = 0
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        area = float(w * h)
+        if area < 100:
+            continue
+        if area > best_area:
+            best_area = area
+            best = (x, y, w, h)
+    return best
+
+
+def _is_part_template(template_path: Path) -> bool:
+    return "_part" in template_path.stem.lower()
+
+
+def _prepare_match_template(template_path: Path):
+    template_bgr = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
+    if template_bgr is None:
+        return None
+
+    used_red_box_roi = False
+    source_h, source_w = template_bgr.shape[:2]
+    match_bgr = template_bgr
+
+    if not _is_part_template(template_path):
+        red_box = _extract_red_box_bounds(template_bgr)
+        if red_box is not None:
+            x, y, w, h = red_box
+            roi = template_bgr[y : y + h, x : x + w]
+            if roi.size > 0:
+                match_bgr = roi
+                used_red_box_roi = True
+
+    match_gray = cv2.cvtColor(match_bgr, cv2.COLOR_BGR2GRAY)
+    return {
+        "gray": match_gray,
+        "used_red_box_roi": used_red_box_roi,
+        "source_w": int(source_w),
+        "source_h": int(source_h),
+        "match_w": int(match_gray.shape[1]),
+        "match_h": int(match_gray.shape[0]),
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run OpenCV multi-scale template matching against a screenshot.")
@@ -29,10 +86,11 @@ def locate_best_multiscale(
     max_scale: float,
     scale_step: float,
 ):
-    template = cv2.imread(str(template_path), cv2.IMREAD_GRAYSCALE)
-    if template is None:
+    prepared = _prepare_match_template(template_path)
+    if prepared is None:
         return None
 
+    template = prepared["gray"]
     th, tw = template.shape[:2]
     best_score = -1.0
     best_rect = None
@@ -68,6 +126,9 @@ def locate_best_multiscale(
         "y": best_rect[1],
         "w": best_rect[2],
         "h": best_rect[3],
+        "used_red_box_roi": prepared["used_red_box_roi"],
+        "source_template_size": [prepared["source_w"], prepared["source_h"]],
+        "match_template_size": [prepared["match_w"], prepared["match_h"]],
     }
 
 

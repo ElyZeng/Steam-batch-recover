@@ -9,8 +9,6 @@ on:
 jobs:
   build-windows-exe:
     runs-on: windows-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     steps:
       - name: Checkout
@@ -26,7 +24,7 @@ jobs:
         run: ./build_exe.ps1
 
       - name: Upload EXE Artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: SteamGameBatchRecover-windows-exe
           path: dist/SteamGameBatchRecover/**

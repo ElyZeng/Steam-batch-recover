@@ -599,7 +599,12 @@ def _resolve_templates_root(language: str) -> Path:
         base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
     else:
         base = Path(__file__).resolve().parents[2]
-    return base / "SteamGUI_material" / language
+    materials_root = base / "SteamGUI_material"
+    if language == "en":
+        preferred = materials_root / "en_1"
+        if preferred.exists():
+            return preferred
+    return materials_root / language
 
 
 def find_steam_executable() -> Path | None:

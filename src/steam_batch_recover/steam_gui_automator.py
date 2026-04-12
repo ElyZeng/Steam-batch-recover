@@ -6,6 +6,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pyautogui
 import pygetwindow
 
@@ -27,6 +29,9 @@ class SteamGuiSettings:
     post_click_pause_seconds: float = 0.8
     steam_initial_wait_seconds: float = 8.0
     debug_screenshots: bool = True
+    min_scale: float = 0.7
+    max_scale: float = 1.3
+    scale_step: float = 0.06
 
 
 class SteamGuiAutomator:
@@ -116,7 +121,10 @@ class SteamGuiAutomator:
     def _run_single_restore(self, backup_path: Path, on_progress: callable | None) -> None:
         try:
             self._focus_steam_window(on_progress)
-            self._click_first(["en_03_SteamMenu_TopLeft.png", "en_04_SteamMenuClick_TopLeft.png"], "Steam top-left menu")
+            if not self._click_first_optional(["en_03_SteamMenu_TopLeft.png", "en_04_SteamMenuClick_TopLeft.png"], "Steam top-left menu", timeout_seconds=10.0):
+                self._emit(on_progress, "Top-left Steam menu not matched, trying keyboard fallback Alt+S")
+                pyautogui.hotkey("alt", "s")
+                time.sleep(self.settings.post_click_pause_seconds)
             self._click_first(["en_05_Game_Restore.png", "en_06_Game_RestoreClick.png.png"], "Restore Game Backup menu item")
             self._click_first(["en_08_browse_path.png", "en_09_browse_pathClick.png"], "Browse button")
             self._click_first(["en_11_file_explorer_path_input.png"], "File explorer path input")
@@ -177,7 +185,7 @@ class SteamGuiAutomator:
                     self._emit(self._progress_callback, f"Template missing: {template}")
                     continue
                 try:
-                    found = pyautogui.locateOnScreen(str(template), confidence=self.settings.confidence)
+                    found = self._locate_with_multiscale(template)
                 except Exception:
                     found = None
                 if found is not None:
@@ -193,6 +201,44 @@ class SteamGuiAutomator:
         if raise_on_timeout:
             raise SteamGuiAutomationError(f"Timed out while waiting for: {step_name}")
         return None
+
+    def _locate_with_multiscale(self, template_path: Path):
+        screenshot = pyautogui.screenshot()
+        screen_bgr = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+        gray_screen = cv2.cvtColor(screen_bgr, cv2.COLOR_BGR2GRAY)
+
+        template = cv2.imread(str(template_path), cv2.IMREAD_GRAYSCALE)
+        if template is None:
+            return None
+
+        th, tw = template.shape[:2]
+        best_score = -1.0
+        best_rect = None
+
+        scale = self.settings.min_scale
+        while scale <= self.settings.max_scale + 1e-9:
+            rw = max(8, int(tw * scale))
+            rh = max(8, int(th * scale))
+            if rw >= gray_screen.shape[1] or rh >= gray_screen.shape[0]:
+                scale += self.settings.scale_step
+                continue
+
+            resized = cv2.resize(template, (rw, rh), interpolation=cv2.INTER_LINEAR)
+            result = cv2.matchTemplate(gray_screen, resized, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            if max_val > best_score:
+                best_score = max_val
+                best_rect = (max_loc[0], max_loc[1], rw, rh)
+            scale += self.settings.scale_step
+
+        if best_rect is None:
+            return None
+        if best_score < self.settings.confidence:
+            return None
+
+        left, top, width, height = best_rect
+        # Return a PyAutoGUI-compatible box tuple.
+        return (left, top, width, height)
 
     def _save_debug_screenshot(self, step_name: str) -> Path | None:
         try:

@@ -1,19 +1,25 @@
 # Steam Game Batch Recover
 
-A small Windows-friendly desktop tool that scans a folder for Steam backup assets, lets you select multiple games, estimates required disk space, and restores or stages them in batch.
+A Windows-friendly desktop tool that scans Steam backup assets, supports Traditional Chinese / Simplified Chinese / English UI, and helps you run Steam's built-in restore flow in batch-oriented steps.
 
 ## What It Supports
 
-- Steam library snapshot backups:
-  - Detects `appmanifest_*.acf` files and matching game folders.
-  - Restores them directly into a Steam library folder.
-- Steam backup packages created by Steam Backup/Restore:
-  - Detects `sku.sis` plus `*.csd` and `*.csm` files.
-  - Stages the selected packages into a destination folder so Steam can import them from there.
+- Steam backup package detection:
+  - Detects `sku.sis` plus `*.csd` and `*.csm`.
+  - Lets you select multiple backup entries and prepare restore paths.
+- Three UI languages:
+  - `zh-TW` (Traditional Chinese)
+  - `zh-CN` (Simplified Chinese)
+  - `en` (English)
+- Steam built-in restore assistant flow:
+  - Launches `Steam.exe`.
+  - Shows step-by-step restore instructions in the selected language.
+  - Copies selected backup paths to clipboard.
+  - Opens selected backup folders for quick browse in Steam restore dialog.
 
 ## Important Limitation
 
-Steam does not expose a stable public restore API for official backup packages. For those backups, this tool copies the selected package files into a staging folder and verifies free space, but the final import still needs to be completed through Steam's restore flow.
+Steam does not expose a stable public API/CLI for direct backup restore automation. This tool does not move backup files and does not install games by itself; it assists batch operation around Steam's official restore UI.
 
 ## Run
 
@@ -83,18 +89,16 @@ After workflow completes, two artifacts are available from the workflow run page
 
 ## Workflow
 
-1. Choose a source folder that contains your backup files.
-2. Choose a destination path:
-   - For library snapshots, use the Steam library root.
-   - For Steam backup packages, use any folder where you want to stage the restore sources.
+1. Choose the UI language (`zh-TW`, `zh-CN`, or `en`).
+2. Choose a source folder that contains your backup files (including external drives).
 3. Click `Scan`.
-4. Select one or more detected games.
-5. Review required space and free space.
-6. Click `Restore Selected`.
+4. Select one or more Steam backup package entries.
+5. Click `Launch Steam Restore Flow`.
+6. In Steam, go to `Steam -> Restore Game Backup...` and browse to one selected path.
 
 ## Notes
 
-- The app checks free space on the destination drive before copying.
-- Existing files are skipped by default unless `Overwrite existing files` is enabled.
+- Backup files can stay on external storage.
+- Steam itself decides final install location (you can use Steam defaults).
 - Runtime does not require extra packages beyond Python standard library.
 - Packaging requires `PyInstaller` (already listed in `requirements.txt`).

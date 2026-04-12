@@ -42,6 +42,8 @@ class SteamGuiAutomator:
         self.settings = settings or SteamGuiSettings()
         self._progress_callback = None
         self._template_anchor_cache: dict[str, tuple[float, float]] = {}
+        self._template_match_cache: dict[str, np.ndarray] = {}
+        self._missing_template_reported: set[str] = set()
         _enable_dpi_awareness()
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = 0.15
@@ -291,7 +293,10 @@ class SteamGuiAutomator:
             for image_name in image_names:
                 template = self.templates_root / image_name
                 if not template.exists():
-                    self._emit(self._progress_callback, f"Template missing: {template}")
+                    key = str(template)
+                    if key not in self._missing_template_reported:
+                        self._missing_template_reported.add(key)
+                        self._emit(self._progress_callback, f"Template missing: {template}")
                     continue
                 try:
                     found = self._locate_with_multiscale(template, region=region)
@@ -333,7 +338,7 @@ class SteamGuiAutomator:
             offset_x = x
             offset_y = y
 
-        template = cv2.imread(str(template_path), cv2.IMREAD_GRAYSCALE)
+        template = self._get_match_template(template_path)
         if template is None:
             return None
 
@@ -375,6 +380,58 @@ class SteamGuiAutomator:
             "box": (abs_left, abs_top, width, height),
             "click": (click_x, click_y),
         }
+
+    def _get_match_template(self, template_path: Path) -> np.ndarray | None:
+        key = str(template_path)
+        cached = self._template_match_cache.get(key)
+        if cached is not None:
+            return cached
+
+        color_template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
+        if color_template is None:
+            return None
+
+        gray_template = cv2.cvtColor(color_template, cv2.COLOR_BGR2GRAY)
+
+        # Non-PART templates are annotated full screenshots; use red-box ROI as the matching patch.
+        if not template_path.stem.upper().endswith("_PART"):
+            bounds = self._extract_red_box_bounds(color_template)
+            if bounds is not None:
+                x1, y1, x2, y2 = bounds
+                crop = gray_template[y1:y2, x1:x2]
+                if crop.size > 0:
+                    self._template_match_cache[key] = crop
+                    self._template_anchor_cache[key] = (0.5, 0.5)
+                    return crop
+
+        self._template_match_cache[key] = gray_template
+        return gray_template
+
+    def _extract_red_box_bounds(self, color_template: np.ndarray) -> tuple[int, int, int, int] | None:
+        hsv = cv2.cvtColor(color_template, cv2.COLOR_BGR2HSV)
+        mask1 = cv2.inRange(hsv, (0, 90, 90), (10, 255, 255))
+        mask2 = cv2.inRange(hsv, (160, 90, 90), (179, 255, 255))
+        red_mask = cv2.bitwise_or(mask1, mask2)
+
+        contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return None
+
+        contour = max(contours, key=cv2.contourArea)
+        area = cv2.contourArea(contour)
+        if area < 40:
+            return None
+
+        x, y, w, h = cv2.boundingRect(contour)
+        if w < 8 or h < 8:
+            return None
+
+        # Trim border thickness by 1px where possible.
+        x1 = x + 1 if w > 2 else x
+        y1 = y + 1 if h > 2 else y
+        x2 = x + w - 1 if w > 2 else x + w
+        y2 = y + h - 1 if h > 2 else y + h
+        return (x1, y1, x2, y2)
 
     def _get_click_anchor_ratio(self, template_path: Path) -> tuple[float, float]:
         key = str(template_path)

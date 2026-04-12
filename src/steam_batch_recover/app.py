@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import traceback
 import tkinter as tk
 from datetime import datetime
 from pathlib import Path
@@ -371,11 +372,18 @@ class SteamBatchRecoverApp(tk.Tk):
         ).start()
 
     def _steam_restore_worker(self, steam_path: Path, restore_paths: list[Path], templates_root: Path) -> None:
+        self._queue_log(f"Steam restore worker started. steam={steam_path}")
         automator = SteamGuiAutomator(templates_root=templates_root)
         try:
             automator.run_batch_restore(steam_path, restore_paths, self._queue_log, steam_already_running=False)
         except SteamGuiAutomationError as exc:
             self.after(0, lambda: self._steam_restore_failed(str(exc)))
+            return
+        except Exception as exc:  # noqa: BLE001
+            tb = traceback.format_exc()
+            self._queue_log(f"Unhandled automation exception: {exc!r}")
+            self._queue_log(tb)
+            self.after(0, lambda: self._steam_restore_failed(f"{exc!r}"))
             return
         self.after(0, self._steam_restore_done)
 

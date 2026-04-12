@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import sys
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -337,7 +338,7 @@ class SteamBatchRecoverApp(tk.Tk):
         if template_language != locale_code:
             self._append_log(self._t("lang_template_fallback"))
 
-        templates_root = Path(__file__).resolve().parents[2] / "SteamGUI_material" / template_language
+        templates_root = _resolve_templates_root(template_language)
         if not templates_root.exists():
             messagebox.showerror(self._t("scan_failed_title"), f"Template folder not found: {templates_root}")
             return
@@ -491,6 +492,14 @@ class SteamBatchRecoverApp(tk.Tk):
     @staticmethod
     def _row_id(backup: GameBackup) -> str:
         return f"{backup.app_id}:{backup.kind.value}:{backup.source_path}"
+
+
+def _resolve_templates_root(language: str) -> Path:
+    if getattr(sys, "frozen", False):
+        base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+    else:
+        base = Path(__file__).resolve().parents[2]
+    return base / "SteamGUI_material" / language
 
 
 def find_steam_executable() -> Path | None:

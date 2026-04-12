@@ -27,6 +27,7 @@ Write-Host "Building multi-file version..."
   --windowed `
   --name SteamGameBatchRecover `
   --paths src `
+  --add-data "SteamGUI_material;SteamGUI_material" `
   main.py
 
 if ($LASTEXITCODE -ne 0) {
@@ -41,6 +42,7 @@ Write-Host "Building single-file version..."
   --onefile `
   --name SteamGameBatchRecover-standalone `
   --paths src `
+  --add-data "SteamGUI_material;SteamGUI_material" `
   main.py
 
 if ($LASTEXITCODE -ne 0) {

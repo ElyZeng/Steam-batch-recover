@@ -121,11 +121,23 @@ class SteamGuiAutomator:
     def _run_single_restore(self, backup_path: Path, on_progress: callable | None) -> None:
         try:
             self._focus_steam_window(on_progress)
-            if not self._click_first_optional(["en_03_SteamMenu_TopLeft.png", "en_04_SteamMenuClick_TopLeft.png"], "Steam top-left menu", timeout_seconds=10.0):
+            menu_region = self._top_left_region()
+            if not self._click_first_optional(
+                ["en_03_SteamMenu_TopLeft.png", "en_04_SteamMenuClick_TopLeft.png"],
+                "Steam top-left menu",
+                timeout_seconds=10.0,
+                region=menu_region,
+            ):
                 self._emit(on_progress, "Top-left Steam menu not matched, trying keyboard fallback Alt+S")
                 pyautogui.hotkey("alt", "s")
                 time.sleep(self.settings.post_click_pause_seconds)
-            self._click_first(["en_05_Game_Restore.png", "en_06_Game_RestoreClick.png.png"], "Restore Game Backup menu item")
+
+            self._click_first(
+                ["en_05_Game_Restore.png", "en_06_Game_RestoreClick.png.png"],
+                "Restore Game Backup menu item",
+                region=menu_region,
+            )
+            self._click_first_optional(["en_07_Find_backup_path.png"], "Find backup path title", timeout_seconds=6.0)
             self._click_first(["en_08_browse_path.png", "en_09_browse_pathClick.png"], "Browse button")
             self._click_first(["en_11_file_explorer_path_input.png"], "File explorer path input")
 
@@ -146,9 +158,9 @@ class SteamGuiAutomator:
         except pyautogui.FailSafeException as exc:
             raise SteamGuiAutomationError(auto_fail_safe_message) from exc
 
-    def _click_first(self, image_names: list[str], step_name: str) -> None:
+    def _click_first(self, image_names: list[str], step_name: str, region: tuple[int, int, int, int] | None = None) -> None:
         self._emit(self._progress_callback, f"Waiting for step: {step_name} | templates={image_names}")
-        found = self._wait_for_any(image_names, self.settings.step_timeout_seconds, step_name)
+        found = self._wait_for_any(image_names, self.settings.step_timeout_seconds, step_name, region=region)
         if found is None:
             raise SteamGuiAutomationError(f"Could not find {step_name} on screen.")
 
@@ -158,9 +170,15 @@ class SteamGuiAutomator:
         pyautogui.click()
         time.sleep(self.settings.post_click_pause_seconds)
 
-    def _click_first_optional(self, image_names: list[str], step_name: str, timeout_seconds: float = 3.0) -> bool:
+    def _click_first_optional(
+        self,
+        image_names: list[str],
+        step_name: str,
+        timeout_seconds: float = 3.0,
+        region: tuple[int, int, int, int] | None = None,
+    ) -> bool:
         self._emit(self._progress_callback, f"Waiting optional step: {step_name} | templates={image_names}")
-        found = self._wait_for_any(image_names, timeout_seconds, step_name, raise_on_timeout=False)
+        found = self._wait_for_any(image_names, timeout_seconds, step_name, raise_on_timeout=False, region=region)
         if found is None:
             return False
         center = pyautogui.center(found)
@@ -176,6 +194,7 @@ class SteamGuiAutomator:
         timeout_seconds: float,
         step_name: str,
         raise_on_timeout: bool = True,
+        region: tuple[int, int, int, int] | None = None,
     ):
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
@@ -185,7 +204,7 @@ class SteamGuiAutomator:
                     self._emit(self._progress_callback, f"Template missing: {template}")
                     continue
                 try:
-                    found = self._locate_with_multiscale(template)
+                    found = self._locate_with_multiscale(template, region=region)
                 except Exception:
                     found = None
                 if found is not None:
@@ -202,10 +221,24 @@ class SteamGuiAutomator:
             raise SteamGuiAutomationError(f"Timed out while waiting for: {step_name}")
         return None
 
-    def _locate_with_multiscale(self, template_path: Path):
+    def _locate_with_multiscale(self, template_path: Path, region: tuple[int, int, int, int] | None = None):
         screenshot = pyautogui.screenshot()
         screen_bgr = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
         gray_screen = cv2.cvtColor(screen_bgr, cv2.COLOR_BGR2GRAY)
+
+        offset_x = 0
+        offset_y = 0
+        if region is not None:
+            x, y, w, h = region
+            x = max(0, x)
+            y = max(0, y)
+            w = max(1, w)
+            h = max(1, h)
+            x2 = min(gray_screen.shape[1], x + w)
+            y2 = min(gray_screen.shape[0], y + h)
+            gray_screen = gray_screen[y:y2, x:x2]
+            offset_x = x
+            offset_y = y
 
         template = cv2.imread(str(template_path), cv2.IMREAD_GRAYSCALE)
         if template is None:
@@ -238,7 +271,11 @@ class SteamGuiAutomator:
 
         left, top, width, height = best_rect
         # Return a PyAutoGUI-compatible box tuple.
-        return (left, top, width, height)
+        return (left + offset_x, top + offset_y, width, height)
+
+    def _top_left_region(self) -> tuple[int, int, int, int]:
+        screen = pyautogui.size()
+        return (0, 0, int(screen.width * 0.55), int(screen.height * 0.55))
 
     def _save_debug_screenshot(self, step_name: str) -> Path | None:
         try:

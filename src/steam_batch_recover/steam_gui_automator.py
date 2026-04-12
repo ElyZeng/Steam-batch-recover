@@ -41,6 +41,7 @@ class SteamGuiAutomator:
         self.templates_root = templates_root
         self.settings = settings or SteamGuiSettings()
         self._progress_callback = None
+        self._template_anchor_cache: dict[str, tuple[float, float]] = {}
         _enable_dpi_awareness()
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = 0.15
@@ -247,9 +248,12 @@ class SteamGuiAutomator:
         if found is None:
             raise SteamGuiAutomationError(f"Could not find {step_name} on screen.")
 
-        center = pyautogui.center(found)
-        self._emit(self._progress_callback, f"Matched {step_name} at x={center.x}, y={center.y}")
-        pyautogui.moveTo(center.x, center.y, duration=0.15)
+        click_x, click_y = found["click"]
+        self._emit(
+            self._progress_callback,
+            f"Matched {step_name} via {found['template']} at x={click_x}, y={click_y}, score={found['score']:.3f}",
+        )
+        pyautogui.moveTo(click_x, click_y, duration=0.15)
         pyautogui.click()
         time.sleep(self.settings.post_click_pause_seconds)
 
@@ -264,9 +268,12 @@ class SteamGuiAutomator:
         found = self._wait_for_any(image_names, timeout_seconds, step_name, raise_on_timeout=False, region=region)
         if found is None:
             return False
-        center = pyautogui.center(found)
-        self._emit(self._progress_callback, f"Matched optional {step_name} at x={center.x}, y={center.y}")
-        pyautogui.moveTo(center.x, center.y, duration=0.15)
+        click_x, click_y = found["click"]
+        self._emit(
+            self._progress_callback,
+            f"Matched optional {step_name} via {found['template']} at x={click_x}, y={click_y}, score={found['score']:.3f}",
+        )
+        pyautogui.moveTo(click_x, click_y, duration=0.15)
         pyautogui.click()
         time.sleep(self.settings.post_click_pause_seconds)
         return True
@@ -291,7 +298,10 @@ class SteamGuiAutomator:
                 except Exception:
                     found = None
                 if found is not None:
-                    self._emit(self._progress_callback, f"Template matched: {template.name}")
+                    self._emit(
+                        self._progress_callback,
+                        f"Template matched: {template.name} score={found['score']:.3f} click=({found['click'][0]},{found['click'][1]})",
+                    )
                     return found
             time.sleep(0.3)
 
@@ -353,8 +363,61 @@ class SteamGuiAutomator:
             return None
 
         left, top, width, height = best_rect
-        # Return a PyAutoGUI-compatible box tuple.
-        return (left + offset_x, top + offset_y, width, height)
+        abs_left = left + offset_x
+        abs_top = top + offset_y
+        ratio_x, ratio_y = self._get_click_anchor_ratio(template_path)
+        click_x = int(abs_left + width * ratio_x)
+        click_y = int(abs_top + height * ratio_y)
+
+        return {
+            "template": template_path.name,
+            "score": float(best_score),
+            "box": (abs_left, abs_top, width, height),
+            "click": (click_x, click_y),
+        }
+
+    def _get_click_anchor_ratio(self, template_path: Path) -> tuple[float, float]:
+        key = str(template_path)
+        cached = self._template_anchor_cache.get(key)
+        if cached is not None:
+            return cached
+
+        # Rule 1: *_PART uses object center.
+        if template_path.stem.upper().endswith("_PART"):
+            ratio = (0.5, 0.5)
+            self._template_anchor_cache[key] = ratio
+            return ratio
+
+        # Rule 2: non-PART uses red-box center in the annotated template.
+        color_template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
+        if color_template is None:
+            ratio = (0.5, 0.5)
+            self._template_anchor_cache[key] = ratio
+            return ratio
+
+        hsv = cv2.cvtColor(color_template, cv2.COLOR_BGR2HSV)
+        mask1 = cv2.inRange(hsv, (0, 80, 80), (10, 255, 255))
+        mask2 = cv2.inRange(hsv, (160, 80, 80), (179, 255, 255))
+        red_mask = cv2.bitwise_or(mask1, mask2)
+
+        ys, xs = np.where(red_mask > 0)
+        if len(xs) < 10:
+            ratio = (0.5, 0.5)
+            self._template_anchor_cache[key] = ratio
+            return ratio
+
+        min_x, max_x = int(xs.min()), int(xs.max())
+        min_y, max_y = int(ys.min()), int(ys.max())
+        center_x = (min_x + max_x) / 2.0
+        center_y = (min_y + max_y) / 2.0
+
+        h, w = color_template.shape[:2]
+        ratio = (
+            max(0.0, min(1.0, center_x / max(1, w - 1))),
+            max(0.0, min(1.0, center_y / max(1, h - 1))),
+        )
+        self._template_anchor_cache[key] = ratio
+        return ratio
 
     def _top_left_region(self) -> tuple[int, int, int, int]:
         screen = pyautogui.size()

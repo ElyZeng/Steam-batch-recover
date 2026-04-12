@@ -19,6 +19,8 @@ if ($LASTEXITCODE -ne 0) {
   throw "Dependency installation failed with exit code $LASTEXITCODE"
 }
 
+# Build multi-file version (faster startup, requires _internal folder)
+Write-Host "Building multi-file version..."
 & $python -m PyInstaller `
   --noconfirm `
   --clean `
@@ -28,7 +30,23 @@ if ($LASTEXITCODE -ne 0) {
   main.py
 
 if ($LASTEXITCODE -ne 0) {
-  throw "PyInstaller failed with exit code $LASTEXITCODE"
+  throw "PyInstaller multi-file build failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "Build finished. EXE path: dist/SteamGameBatchRecover/SteamGameBatchRecover.exe"
+# Build single-file version (portable, slower startup)
+Write-Host "Building single-file version..."
+& $python -m PyInstaller `
+  --noconfirm `
+  --windowed `
+  --onefile `
+  --name SteamGameBatchRecover-standalone `
+  --paths src `
+  main.py
+
+if ($LASTEXITCODE -ne 0) {
+  throw "PyInstaller single-file build failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "Build finished."
+Write-Host "Multi-file version: dist/SteamGameBatchRecover/ (faster, requires _internal folder)"
+Write-Host "Single-file version: dist/SteamGameBatchRecover-standalone.exe (portable, self-contained)"

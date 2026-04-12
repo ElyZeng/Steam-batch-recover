@@ -23,10 +23,18 @@ jobs:
         shell: pwsh
         run: ./build_exe.ps1
 
-      - name: Upload EXE Artifact
+      - name: Upload Multi-File EXE
         uses: actions/upload-artifact@v7
         with:
-          name: SteamGameBatchRecover-windows-exe
+          name: SteamGameBatchRecover-multifile
           path: dist/SteamGameBatchRecover/**
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Single-File EXE
+        uses: actions/upload-artifact@v7
+        with:
+          name: SteamGameBatchRecover-standalone
+          path: dist/SteamGameBatchRecover-standalone.exe
           if-no-files-found: error
           retention-days: 14

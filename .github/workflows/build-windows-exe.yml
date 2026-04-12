@@ -28,7 +28,7 @@ jobs:
       - name: Upload Multi-File EXE
         uses: actions/upload-artifact@v7
         with:
-          name: SteamGameBatchRecover-multifile-${{ github.ref_name }}
+          name: SteamGameBatchRecover-multifile
           path: dist/SteamGameBatchRecover/**
           if-no-files-found: error
           retention-days: 14
@@ -36,7 +36,7 @@ jobs:
       - name: Upload Single-File EXE
         uses: actions/upload-artifact@v7
         with:
-          name: SteamGameBatchRecover-standalone-${{ github.ref_name }}
+          name: SteamGameBatchRecover-standalone
           path: dist/SteamGameBatchRecover-standalone.exe
           if-no-files-found: error
           retention-days: 14

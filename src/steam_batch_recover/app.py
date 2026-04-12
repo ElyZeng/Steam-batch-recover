@@ -3,10 +3,12 @@
 import os
 import subprocess
 import sys
+import tempfile
 import threading
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from .models import BackupKind, GameBackup
 from .scanner import scan_backups
@@ -35,6 +37,8 @@ LOCALE_DATA = {
         "lang_template_fallback": "目前僅內建英文模板，自動化將使用英文畫面辨識。",
         "copy_paths": "複製選取路徑",
         "open_paths": "開啟選取資料夾",
+        "open_debug_folder": "開啟除錯資料夾",
+        "open_debug_console": "開啟除錯視窗",
         "status_ready": "就緒",
         "status_scanning": "掃描中...",
         "status_scan_failed": "掃描失敗",
@@ -64,6 +68,8 @@ LOCALE_DATA = {
         "backup_kind_snapshot": "資料庫快照",
         "backup_kind_package": "Steam 備份包",
         "folder_dialog": "選擇備份來源資料夾",
+        "debug_console_title": "除錯主控台",
+        "debug_folder_hint": "除錯輸出路徑: {path}",
     },
     "zh-CN": {
         "title": "Steam 批量还原助手",
@@ -81,6 +87,8 @@ LOCALE_DATA = {
         "lang_template_fallback": "当前仅内置英文模板，自动化将使用英文界面识别。",
         "copy_paths": "复制所选路径",
         "open_paths": "打开所选文件夹",
+        "open_debug_folder": "打开调试文件夹",
+        "open_debug_console": "打开调试窗口",
         "status_ready": "就绪",
         "status_scanning": "扫描中...",
         "status_scan_failed": "扫描失败",
@@ -110,6 +118,8 @@ LOCALE_DATA = {
         "backup_kind_snapshot": "库快照",
         "backup_kind_package": "Steam 备份包",
         "folder_dialog": "选择备份来源文件夹",
+        "debug_console_title": "调试控制台",
+        "debug_folder_hint": "调试输出路径: {path}",
     },
     "en": {
         "title": "Steam Batch Restore Assistant",
@@ -127,6 +137,8 @@ LOCALE_DATA = {
         "lang_template_fallback": "Only English templates are currently bundled, so automation will use English UI matching.",
         "copy_paths": "Copy Selected Paths",
         "open_paths": "Open Selected Folders",
+        "open_debug_folder": "Open Debug Folder",
+        "open_debug_console": "Open Debug Console",
         "status_ready": "Ready",
         "status_scanning": "Scanning...",
         "status_scan_failed": "Scan failed",
@@ -156,6 +168,8 @@ LOCALE_DATA = {
         "backup_kind_snapshot": "Library snapshot",
         "backup_kind_package": "Steam backup package",
         "folder_dialog": "Choose backup source folder",
+        "debug_console_title": "Debug Console",
+        "debug_folder_hint": "Debug output path: {path}",
     },
 }
 
@@ -171,8 +185,13 @@ class SteamBatchRecoverApp(tk.Tk):
         self.status_var = tk.StringVar()
         self.summary_var = tk.StringVar()
         self.space_var = tk.StringVar()
+        self.debug_folder = Path(tempfile.gettempdir()) / "SteamBatchRecover_debug"
+        self.debug_log_file = self.debug_folder / "session.log"
+        self.debug_window: tk.Toplevel | None = None
+        self.debug_text: scrolledtext.ScrolledText | None = None
 
         self.backups: list[GameBackup] = []
+        self.debug_folder.mkdir(parents=True, exist_ok=True)
 
         self._build_layout()
         self._apply_locale()
@@ -218,9 +237,13 @@ class SteamBatchRecoverApp(tk.Tk):
         self.copy_paths_button.grid(row=0, column=4, padx=(0, 8))
         self.open_paths_button = ttk.Button(actions, command=self._open_selected_paths)
         self.open_paths_button.grid(row=0, column=5, padx=(0, 8))
-        actions.columnconfigure(6, weight=1)
+        self.open_debug_folder_button = ttk.Button(actions, command=self._open_debug_folder)
+        self.open_debug_folder_button.grid(row=0, column=6, padx=(0, 8))
+        self.open_debug_console_button = ttk.Button(actions, command=self._open_debug_console)
+        self.open_debug_console_button.grid(row=0, column=7, padx=(0, 8))
+        actions.columnconfigure(8, weight=1)
 
-        ttk.Label(actions, textvariable=self.status_var).grid(row=0, column=6, sticky="e")
+        ttk.Label(actions, textvariable=self.status_var).grid(row=0, column=8, sticky="e")
 
         center = ttk.Frame(self, padding=(12, 0, 12, 12))
         center.grid(row=1, column=0, sticky="nsew")
@@ -333,6 +356,8 @@ class SteamBatchRecoverApp(tk.Tk):
             self._append_log(self._t("lang_template_fallback"))
 
         templates_root = _resolve_templates_root(template_language)
+        self._append_log(self._t("debug_folder_hint", path=self.debug_folder))
+        self._append_log(f"Templates root: {templates_root}")
         if not templates_root.exists():
             messagebox.showerror(self._t("scan_failed_title"), f"Template folder not found: {templates_root}")
             return
@@ -362,6 +387,7 @@ class SteamBatchRecoverApp(tk.Tk):
     def _steam_restore_failed(self, error: str) -> None:
         self._set_busy(False, self._t("status_ready"))
         self._append_log(self._t("steam_restore_failed", error=error))
+        self._append_log(self._t("debug_folder_hint", path=self.debug_folder))
         messagebox.showerror(self._t("scan_failed_title"), self._t("steam_restore_failed", error=error))
 
     def _queue_log(self, message: str) -> None:
@@ -395,11 +421,53 @@ class SteamBatchRecoverApp(tk.Tk):
                 continue
         self._append_log(self._t("open_paths_done", count=opened))
 
+    def _open_debug_folder(self) -> None:
+        try:
+            self.debug_folder.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(self.debug_folder))
+            self._append_log(self._t("debug_folder_hint", path=self.debug_folder))
+        except OSError as exc:
+            self._append_log(f"Failed to open debug folder: {exc}")
+
+    def _open_debug_console(self) -> None:
+        if self.debug_window is not None and self.debug_window.winfo_exists():
+            self.debug_window.deiconify()
+            self.debug_window.lift()
+            self.debug_window.focus_force()
+            return
+
+        self.debug_window = tk.Toplevel(self)
+        self.debug_window.title(self._t("debug_console_title"))
+        self.debug_window.geometry("980x420")
+
+        self.debug_text = scrolledtext.ScrolledText(self.debug_window, wrap="word", state="disabled")
+        self.debug_text.pack(fill="both", expand=True, padx=8, pady=8)
+        self._append_debug_window_line(self._t("debug_folder_hint", path=self.debug_folder))
+
     def _append_log(self, message: str) -> None:
+        timestamped = f"[{datetime.now().strftime('%H:%M:%S')}] {message}"
         self.log_text.configure(state="normal")
-        self.log_text.insert("end", message + "\n")
+        self.log_text.insert("end", timestamped + "\n")
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
+        self._append_debug_window_line(timestamped)
+        self._append_debug_file_line(timestamped)
+
+    def _append_debug_window_line(self, message: str) -> None:
+        if self.debug_text is None:
+            return
+        self.debug_text.configure(state="normal")
+        self.debug_text.insert("end", message + "\n")
+        self.debug_text.see("end")
+        self.debug_text.configure(state="disabled")
+
+    def _append_debug_file_line(self, message: str) -> None:
+        try:
+            self.debug_folder.mkdir(parents=True, exist_ok=True)
+            with self.debug_log_file.open("a", encoding="utf-8") as handle:
+                handle.write(message + "\n")
+        except OSError:
+            pass
 
     def _refresh_space_summary(self) -> None:
         selected = self._selected_backups()
@@ -455,6 +523,8 @@ class SteamBatchRecoverApp(tk.Tk):
         self.steam_restore_button.configure(text=self._t("steam_restore"))
         self.copy_paths_button.configure(text=self._t("copy_paths"))
         self.open_paths_button.configure(text=self._t("open_paths"))
+        self.open_debug_folder_button.configure(text=self._t("open_debug_folder"))
+        self.open_debug_console_button.configure(text=self._t("open_debug_console"))
 
         self.tree.heading("kind", text=self._t("type"))
         self.tree.heading("app_id", text=self._t("app_id"))

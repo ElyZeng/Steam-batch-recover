@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import subprocess
-import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -34,6 +33,7 @@ class SteamGuiAutomator:
     def __init__(self, templates_root: Path, settings: SteamGuiSettings | None = None) -> None:
         self.templates_root = templates_root
         self.settings = settings or SteamGuiSettings()
+        self._progress_callback = None
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = 0.15
 
@@ -44,6 +44,7 @@ class SteamGuiAutomator:
         on_progress: callable | None = None,
         steam_already_running: bool = False,
     ) -> None:
+        self._progress_callback = on_progress
         if not backup_paths:
             raise SteamGuiAutomationError("No backup path selected.")
 
@@ -75,9 +76,37 @@ class SteamGuiAutomator:
                 time.sleep(0.5)
                 self._emit(on_progress, f"Steam window focused: {win.title!r}")
             else:
-                self._emit(on_progress, "Steam window not found by title, proceeding anyway.")
+                self._emit(on_progress, "Steam window not found by title. Trying taskbar fallback...")
+                self._try_activate_from_taskbar(on_progress)
         except Exception as exc:
             self._emit(on_progress, f"Window focus attempt failed (non-fatal): {exc}")
+            self._try_activate_from_taskbar(on_progress)
+
+    def _try_activate_from_taskbar(self, on_progress: callable | None) -> None:
+        # Auto-hidden taskbar needs a mouse move to screen bottom before template matching.
+        screen = pyautogui.size()
+        pyautogui.moveTo(screen.width // 2, max(1, screen.height - 2), duration=0.15)
+        time.sleep(0.4)
+
+        clicked = self._click_first_optional(
+            [
+                "en_02_TaskBarSteamIcon.png",
+                "en_0_EULA_minimized.png",
+            ],
+            "Steam icon on taskbar",
+            timeout_seconds=4.0,
+        )
+        if clicked:
+            time.sleep(0.8)
+            try:
+                windows = pygetwindow.getWindowsWithTitle("Steam")
+                if windows:
+                    windows[0].activate()
+                    self._emit(on_progress, "Steam activated from taskbar fallback.")
+                    return
+            except Exception:
+                pass
+        self._emit(on_progress, "Taskbar fallback did not activate Steam window.")
 
     def _run_single_restore(self, backup_path: Path, on_progress: callable | None) -> None:
         try:
@@ -105,23 +134,28 @@ class SteamGuiAutomator:
             raise SteamGuiAutomationError(auto_fail_safe_message) from exc
 
     def _click_first(self, image_names: list[str], step_name: str) -> None:
+        self._emit(self._progress_callback, f"Waiting for step: {step_name} | templates={image_names}")
         found = self._wait_for_any(image_names, self.settings.step_timeout_seconds, step_name)
         if found is None:
             raise SteamGuiAutomationError(f"Could not find {step_name} on screen.")
 
         center = pyautogui.center(found)
+        self._emit(self._progress_callback, f"Matched {step_name} at x={center.x}, y={center.y}")
         pyautogui.moveTo(center.x, center.y, duration=0.15)
         pyautogui.click()
         time.sleep(self.settings.post_click_pause_seconds)
 
-    def _click_first_optional(self, image_names: list[str], step_name: str) -> None:
-        found = self._wait_for_any(image_names, 3.0, step_name, raise_on_timeout=False)
+    def _click_first_optional(self, image_names: list[str], step_name: str, timeout_seconds: float = 3.0) -> bool:
+        self._emit(self._progress_callback, f"Waiting optional step: {step_name} | templates={image_names}")
+        found = self._wait_for_any(image_names, timeout_seconds, step_name, raise_on_timeout=False)
         if found is None:
-            return
+            return False
         center = pyautogui.center(found)
+        self._emit(self._progress_callback, f"Matched optional {step_name} at x={center.x}, y={center.y}")
         pyautogui.moveTo(center.x, center.y, duration=0.15)
         pyautogui.click()
         time.sleep(self.settings.post_click_pause_seconds)
+        return True
 
     def _wait_for_any(
         self,
@@ -135,30 +169,36 @@ class SteamGuiAutomator:
             for image_name in image_names:
                 template = self.templates_root / image_name
                 if not template.exists():
+                    self._emit(self._progress_callback, f"Template missing: {template}")
                     continue
                 try:
                     found = pyautogui.locateOnScreen(str(template), confidence=self.settings.confidence)
                 except Exception:
                     found = None
                 if found is not None:
+                    self._emit(self._progress_callback, f"Template matched: {template.name}")
                     return found
             time.sleep(0.3)
 
+        screenshot_path = None
         if self.settings.debug_screenshots:
-            self._save_debug_screenshot(step_name)
+            screenshot_path = self._save_debug_screenshot(step_name)
+            if screenshot_path is not None:
+                self._emit(self._progress_callback, f"Debug screenshot saved: {screenshot_path}")
         if raise_on_timeout:
             raise SteamGuiAutomationError(f"Timed out while waiting for: {step_name}")
         return None
 
-    def _save_debug_screenshot(self, step_name: str) -> None:
+    def _save_debug_screenshot(self, step_name: str) -> Path | None:
         try:
             safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in step_name)
             debug_dir = Path(tempfile.gettempdir()) / "SteamBatchRecover_debug"
             debug_dir.mkdir(parents=True, exist_ok=True)
             out_path = debug_dir / f"fail_{safe_name}_{int(time.time())}.png"
             pyautogui.screenshot(str(out_path))
+            return out_path
         except Exception:
-            pass
+            return None
 
     @staticmethod
     def _emit(callback: callable | None, message: str) -> None:

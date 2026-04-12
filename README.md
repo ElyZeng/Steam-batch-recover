@@ -39,6 +39,34 @@ Packaging notes:
 - Build output folders are `build/` and `dist/`.
 - If SmartScreen appears on another machine, choose More info > Run anyway for internal testing.
 
+## Build EXE via GitHub Actions
+
+This repository includes workflow [build-windows-exe.yml](.github/workflows/build-windows-exe.yml).
+
+Trigger options:
+- Manual trigger: Actions > Build Windows EXE > Run workflow
+- Tag trigger: push a tag like `v1.0.0`
+
+After workflow completes, download artifact `SteamGameBatchRecover-windows-exe` from the workflow run page.
+
+## Local EXE Build vs GitHub Actions EXE Artifact
+
+- Build environment:
+  - Local: uses your current machine and Python setup.
+  - Actions: uses clean `windows-latest` runner with Python 3.12.
+- Reproducibility:
+  - Local: can vary by your installed tools and system state.
+  - Actions: more consistent across runs due to fixed CI steps.
+- Speed and convenience:
+  - Local: faster for quick iteration and immediate testing.
+  - Actions: better for sharing test artifacts with other devices/users.
+- Trust and security prompts:
+  - Local: usually fewer unknown publisher prompts on your own machine.
+  - Actions: downloaded exe may trigger SmartScreen on first run.
+- Typical use case:
+  - Local: development and debugging.
+  - Actions: release candidate packaging and cross-device verification.
+
 ## Workflow
 
 1. Choose a source folder that contains your backup files.
@@ -54,4 +82,5 @@ Packaging notes:
 
 - The app checks free space on the destination drive before copying.
 - Existing files are skipped by default unless `Overwrite existing files` is enabled.
-- No third-party Python packages are required.
+- Runtime does not require extra packages beyond Python standard library.
+- Packaging requires `PyInstaller` (already listed in `requirements.txt`).

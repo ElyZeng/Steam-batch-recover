@@ -1,8 +1,23 @@
 $ErrorActionPreference = "Stop"
 
 $venvPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
-$systemPython = "C:/Users/whoareyou/AppData/Local/Programs/Python/Python312/python.exe"
-$python = if (Test-Path $venvPython) { $venvPython } else { $systemPython }
+
+if (Test-Path $venvPython) {
+  $python = $venvPython
+}
+elseif (Get-Command python -ErrorAction SilentlyContinue) {
+  $python = (Get-Command python).Source
+}
+else {
+  throw "Python executable not found. Install Python or create .venv first."
+}
+
+& $python -m pip install --upgrade pip
+& $python -m pip install -r (Join-Path $PSScriptRoot "requirements.txt")
+
+if ($LASTEXITCODE -ne 0) {
+  throw "Dependency installation failed with exit code $LASTEXITCODE"
+}
 
 & $python -m PyInstaller `
   --noconfirm `

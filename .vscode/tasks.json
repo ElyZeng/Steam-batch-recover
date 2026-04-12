@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Steam Batch Recover",
+			"type": "shell",
+			"command": "C:/Users/whoareyou/AppData/Local/Programs/Python/Python312/python.exe",
+			"args": [
+				"main.py"
+			],
+			"isBackground": true,
+			"group": "build"
+		}
+	]
+}

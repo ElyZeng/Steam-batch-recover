@@ -122,22 +122,24 @@ class SteamGuiAutomator:
         try:
             self._focus_steam_window(on_progress)
             menu_region = self._top_left_region()
-            if not self._click_first_optional(
+            menu_clicked = self._click_first_optional(
                 ["en_03_SteamMenu_TopLeft.png", "en_04_SteamMenuClick_TopLeft.png"],
                 "Steam top-left menu",
                 timeout_seconds=10.0,
                 region=menu_region,
-            ):
+            )
+            if not menu_clicked:
                 self._emit(on_progress, "Top-left Steam menu not matched, trying keyboard fallback Alt+S")
                 pyautogui.hotkey("alt", "s")
                 time.sleep(self.settings.post_click_pause_seconds)
 
-            self._click_first(
-                ["en_05_Game_Restore.png", "en_06_Game_RestoreClick.png.png"],
-                "Restore Game Backup menu item",
-                region=menu_region,
-            )
-            self._click_first_optional(["en_07_Find_backup_path.png"], "Find backup path title", timeout_seconds=6.0)
+            if not self._open_restore_wizard(menu_region):
+                self._click_first(
+                    ["en_05_Game_Restore.png", "en_06_Game_RestoreClick.png.png"],
+                    "Restore Game Backup menu item",
+                    region=menu_region,
+                )
+            self._click_first_optional(["en_07_Find_backup_path.png"], "Find backup path title", timeout_seconds=8.0)
             self._click_first(["en_08_browse_path.png", "en_09_browse_pathClick.png"], "Browse button")
             self._click_first(["en_11_file_explorer_path_input.png"], "File explorer path input")
 
@@ -157,6 +159,43 @@ class SteamGuiAutomator:
             self._emit(on_progress, "Restore step completed, moving to next item.")
         except pyautogui.FailSafeException as exc:
             raise SteamGuiAutomationError(auto_fail_safe_message) from exc
+
+    def _open_restore_wizard(self, menu_region: tuple[int, int, int, int]) -> bool:
+        # Keyboard-first fallback for UI/theme/scale drift in menu templates.
+        sequences = [
+            ("alt+s", "r"),
+            ("alt+s", "b"),
+        ]
+        for hotkey, follow_key in sequences:
+            self._emit(self._progress_callback, f"Trying keyboard sequence: {hotkey} then {follow_key}")
+            keys = hotkey.split("+")
+            if len(keys) == 2:
+                pyautogui.hotkey(keys[0], keys[1])
+            else:
+                pyautogui.press(hotkey)
+            time.sleep(0.5)
+            pyautogui.press(follow_key)
+            time.sleep(1.0)
+
+            if self._wait_for_any(
+                ["en_07_Find_backup_path.png", "en_08_browse_path.png", "en_09_browse_pathClick.png"],
+                3.0,
+                "Restore wizard entry after keyboard sequence",
+                raise_on_timeout=False,
+            ) is not None:
+                self._emit(self._progress_callback, "Restore wizard opened via keyboard sequence.")
+                return True
+
+            # Re-open menu before trying the next sequence.
+            self._click_first_optional(
+                ["en_03_SteamMenu_TopLeft.png", "en_04_SteamMenuClick_TopLeft.png"],
+                "Steam top-left menu retry",
+                timeout_seconds=3.0,
+                region=menu_region,
+            )
+
+        self._emit(self._progress_callback, "Keyboard sequences did not open restore wizard; falling back to template click.")
+        return False
 
     def _click_first(self, image_names: list[str], step_name: str, region: tuple[int, int, int, int] | None = None) -> None:
         self._emit(self._progress_callback, f"Waiting for step: {step_name} | templates={image_names}")

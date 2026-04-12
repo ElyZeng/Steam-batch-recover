@@ -48,7 +48,12 @@ class SteamGuiAutomator:
         if not backup_paths:
             raise SteamGuiAutomationError("No backup path selected.")
 
-        screenshot = pyautogui.screenshot()
+        try:
+            screenshot = pyautogui.screenshot()
+        except Exception as exc:  # noqa: BLE001
+            raise SteamGuiAutomationError(
+                "Screenshot backend initialization failed. Please rebuild using updated dependencies (pillow/pyscreeze) and hidden-import settings."
+            ) from exc
         self._emit(on_progress, f"Screen capture size: {screenshot.width}x{screenshot.height} (physical pixels)")
 
         if not steam_already_running:

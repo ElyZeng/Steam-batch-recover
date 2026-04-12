@@ -27,6 +27,12 @@ Write-Host "Building multi-file version..."
   --windowed `
   --name SteamGameBatchRecover `
   --paths src `
+  --hidden-import pyscreeze `
+  --hidden-import PIL `
+  --hidden-import PIL.Image `
+  --hidden-import PIL.ImageGrab `
+  --hidden-import pygetwindow `
+  --hidden-import mouseinfo `
   --add-data "SteamGUI_material;SteamGUI_material" `
   main.py
 
@@ -42,6 +48,12 @@ Write-Host "Building single-file version..."
   --onefile `
   --name SteamGameBatchRecover-standalone `
   --paths src `
+  --hidden-import pyscreeze `
+  --hidden-import PIL `
+  --hidden-import PIL.Image `
+  --hidden-import PIL.ImageGrab `
+  --hidden-import pygetwindow `
+  --hidden-import mouseinfo `
   --add-data "SteamGUI_material;SteamGUI_material" `
   main.py
 

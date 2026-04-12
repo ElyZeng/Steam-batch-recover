@@ -3,6 +3,8 @@ name: Build Windows EXE
 on:
   workflow_dispatch:
   push:
+    branches:
+      - test/steam-gui-1920x1200-150scale
     tags:
       - "v*"
 
@@ -26,7 +28,7 @@ jobs:
       - name: Upload Multi-File EXE
         uses: actions/upload-artifact@v7
         with:
-          name: SteamGameBatchRecover-multifile
+          name: SteamGameBatchRecover-multifile-${{ github.ref_name }}
           path: dist/SteamGameBatchRecover/**
           if-no-files-found: error
           retention-days: 14
@@ -34,7 +36,7 @@ jobs:
       - name: Upload Single-File EXE
         uses: actions/upload-artifact@v7
         with:
-          name: SteamGameBatchRecover-standalone
+          name: SteamGameBatchRecover-standalone-${{ github.ref_name }}
           path: dist/SteamGameBatchRecover-standalone.exe
           if-no-files-found: error
           retention-days: 14

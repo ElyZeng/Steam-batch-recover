@@ -49,6 +49,7 @@ class SteamGuiAutomator:
         backup_paths: list[Path],
         on_progress: callable | None = None,
         steam_already_running: bool = False,
+        start_from_restore_wizard: bool = False,
     ) -> None:
         self._progress_callback = on_progress
         if not backup_paths:
@@ -74,7 +75,8 @@ class SteamGuiAutomator:
 
         for index, backup_path in enumerate(backup_paths, start=1):
             self._emit(on_progress, f"[{index}/{len(backup_paths)}] Restoring from: {backup_path}")
-            self._run_single_restore(backup_path, on_progress)
+            self._run_single_restore(backup_path, on_progress, start_from_restore_wizard=start_from_restore_wizard)
+            start_from_restore_wizard = False
 
     def _focus_steam_window(self, on_progress: callable | None) -> None:
         try:
@@ -123,23 +125,26 @@ class SteamGuiAutomator:
                 pass
         self._emit(on_progress, "Taskbar fallback did not activate Steam window.")
 
-    def _run_single_restore(self, backup_path: Path, on_progress: callable | None) -> None:
+    def _run_single_restore(self, backup_path: Path, on_progress: callable | None, start_from_restore_wizard: bool = False) -> None:
         try:
             self._focus_steam_window(on_progress)
-            menu_region = self._top_left_region()
-            menu_clicked = self._open_steam_menu(menu_region)
-            if not menu_clicked:
-                self._wait_for_restore_wizard_manual(on_progress)
-            else:
-                restore_clicked = self._click_first_optional(
-                    ["en_05_Game_Restore.png", "en_06_Game_RestoreClick.png.png"],
-                    "Restore Game Backup menu item",
-                    timeout_seconds=8.0,
-                    region=menu_region,
-                )
-                if not restore_clicked:
-                    self._emit(on_progress, "Restore menu item not matched. Switching to manual wizard takeover.")
+            if not start_from_restore_wizard:
+                menu_region = self._top_left_region()
+                menu_clicked = self._open_steam_menu(menu_region)
+                if not menu_clicked:
                     self._wait_for_restore_wizard_manual(on_progress)
+                else:
+                    restore_clicked = self._click_first_optional(
+                        ["en_05_Game_Restore.png", "en_06_Game_RestoreClick.png.png"],
+                        "Restore Game Backup menu item",
+                        timeout_seconds=8.0,
+                        region=menu_region,
+                    )
+                    if not restore_clicked:
+                        self._emit(on_progress, "Restore menu item not matched. Switching to manual wizard takeover.")
+                        self._wait_for_restore_wizard_manual(on_progress)
+            else:
+                self._emit(on_progress, "Starting from manually opened restore wizard.")
 
             self._click_first_optional(["en_07_Find_backup_path.png"], "Find backup path title", timeout_seconds=8.0)
             self._click_first(["en_08_browse_path.png", "en_09_browse_pathClick.png"], "Browse button")

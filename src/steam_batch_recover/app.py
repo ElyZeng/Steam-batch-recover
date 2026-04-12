@@ -31,10 +31,12 @@ LOCALE_DATA = {
         "select_all": "全選",
         "clear_selection": "清除選取",
         "steam_restore": "喚起 Steam 還原流程",
+        "steam_restore_from_wizard": "從已開啟精靈繼續",
         "steam_restore_running": "Steam 自動還原中...",
         "steam_restore_done": "Steam 自動還原批次已完成。",
         "steam_restore_failed": "Steam 自動還原失敗: {error}",
         "steam_restore_started": "開始 Steam GUI 批次還原，共 {count} 筆。",
+        "steam_restore_started_from_wizard": "從已開啟的 Steam 還原精靈接手，共 {count} 筆。",
         "lang_template_fallback": "目前僅內建英文模板，自動化將使用英文畫面辨識。",
         "copy_paths": "複製選取路徑",
         "open_paths": "開啟選取資料夾",
@@ -81,10 +83,12 @@ LOCALE_DATA = {
         "select_all": "全选",
         "clear_selection": "清除选择",
         "steam_restore": "唤起 Steam 还原流程",
+        "steam_restore_from_wizard": "从已打开向导继续",
         "steam_restore_running": "Steam 自动还原中...",
         "steam_restore_done": "Steam 自动还原批次已完成。",
         "steam_restore_failed": "Steam 自动还原失败: {error}",
         "steam_restore_started": "开始 Steam GUI 批次还原，共 {count} 项。",
+        "steam_restore_started_from_wizard": "从已打开的 Steam 还原向导接手，共 {count} 项。",
         "lang_template_fallback": "当前仅内置英文模板，自动化将使用英文界面识别。",
         "copy_paths": "复制所选路径",
         "open_paths": "打开所选文件夹",
@@ -131,10 +135,12 @@ LOCALE_DATA = {
         "select_all": "Select All",
         "clear_selection": "Clear Selection",
         "steam_restore": "Launch Steam Restore Flow",
+        "steam_restore_from_wizard": "Resume From Open Wizard",
         "steam_restore_running": "Running Steam auto-restore...",
         "steam_restore_done": "Steam GUI batch restore completed.",
         "steam_restore_failed": "Steam GUI batch restore failed: {error}",
         "steam_restore_started": "Starting Steam GUI batch restore for {count} item(s).",
+        "steam_restore_started_from_wizard": "Resuming from an already open Steam restore wizard for {count} item(s).",
         "lang_template_fallback": "Only English templates are currently bundled, so automation will use English UI matching.",
         "copy_paths": "Copy Selected Paths",
         "open_paths": "Open Selected Folders",
@@ -234,17 +240,19 @@ class SteamBatchRecoverApp(tk.Tk):
         self.clear_selection_button.grid(row=0, column=2, padx=(0, 8))
         self.steam_restore_button = ttk.Button(actions, command=self._launch_steam_restore)
         self.steam_restore_button.grid(row=0, column=3, padx=(0, 8))
+        self.steam_restore_from_wizard_button = ttk.Button(actions, command=self._resume_from_restore_wizard)
+        self.steam_restore_from_wizard_button.grid(row=0, column=4, padx=(0, 8))
         self.copy_paths_button = ttk.Button(actions, command=self._copy_selected_paths)
-        self.copy_paths_button.grid(row=0, column=4, padx=(0, 8))
+        self.copy_paths_button.grid(row=0, column=5, padx=(0, 8))
         self.open_paths_button = ttk.Button(actions, command=self._open_selected_paths)
-        self.open_paths_button.grid(row=0, column=5, padx=(0, 8))
+        self.open_paths_button.grid(row=0, column=6, padx=(0, 8))
         self.open_debug_folder_button = ttk.Button(actions, command=self._open_debug_folder)
-        self.open_debug_folder_button.grid(row=0, column=6, padx=(0, 8))
+        self.open_debug_folder_button.grid(row=0, column=7, padx=(0, 8))
         self.open_debug_console_button = ttk.Button(actions, command=self._open_debug_console)
-        self.open_debug_console_button.grid(row=0, column=7, padx=(0, 8))
-        actions.columnconfigure(8, weight=1)
+        self.open_debug_console_button.grid(row=0, column=8, padx=(0, 8))
+        actions.columnconfigure(9, weight=1)
 
-        ttk.Label(actions, textvariable=self.status_var).grid(row=0, column=8, sticky="e")
+        ttk.Label(actions, textvariable=self.status_var).grid(row=0, column=9, sticky="e")
 
         center = ttk.Frame(self, padding=(12, 0, 12, 12))
         center.grid(row=1, column=0, sticky="nsew")
@@ -341,6 +349,12 @@ class SteamBatchRecoverApp(tk.Tk):
         self._refresh_space_summary()
 
     def _launch_steam_restore(self) -> None:
+        self._start_steam_restore(start_from_restore_wizard=False)
+
+    def _resume_from_restore_wizard(self) -> None:
+        self._start_steam_restore(start_from_restore_wizard=True)
+
+    def _start_steam_restore(self, start_from_restore_wizard: bool) -> None:
         restore_paths = self._selected_restore_paths()
         if not restore_paths:
             messagebox.showinfo(self._t("no_selection_title"), self._t("no_steam_backup"))
@@ -363,19 +377,32 @@ class SteamBatchRecoverApp(tk.Tk):
             messagebox.showerror(self._t("scan_failed_title"), f"Template folder not found: {templates_root}")
             return
 
-        self._append_log(self._t("steam_restore_started", count=len(restore_paths)))
+        start_key = "steam_restore_started_from_wizard" if start_from_restore_wizard else "steam_restore_started"
+        self._append_log(self._t(start_key, count=len(restore_paths)))
         self._set_busy(True, self._t("steam_restore_running"))
         threading.Thread(
             target=self._steam_restore_worker,
-            args=(steam_path, restore_paths, templates_root),
+            args=(steam_path, restore_paths, templates_root, start_from_restore_wizard),
             daemon=True,
         ).start()
 
-    def _steam_restore_worker(self, steam_path: Path, restore_paths: list[Path], templates_root: Path) -> None:
+    def _steam_restore_worker(
+        self,
+        steam_path: Path,
+        restore_paths: list[Path],
+        templates_root: Path,
+        start_from_restore_wizard: bool,
+    ) -> None:
         self._queue_log(f"Steam restore worker started. steam={steam_path}")
         automator = SteamGuiAutomator(templates_root=templates_root)
         try:
-            automator.run_batch_restore(steam_path, restore_paths, self._queue_log, steam_already_running=False)
+            automator.run_batch_restore(
+                steam_path,
+                restore_paths,
+                self._queue_log,
+                steam_already_running=False,
+                start_from_restore_wizard=start_from_restore_wizard,
+            )
         except SteamGuiAutomationError as exc:
             self.after(0, lambda: self._steam_restore_failed(str(exc)))
             return
@@ -529,6 +556,7 @@ class SteamBatchRecoverApp(tk.Tk):
         self.select_all_button.configure(text=self._t("select_all"))
         self.clear_selection_button.configure(text=self._t("clear_selection"))
         self.steam_restore_button.configure(text=self._t("steam_restore"))
+        self.steam_restore_from_wizard_button.configure(text=self._t("steam_restore_from_wizard"))
         self.copy_paths_button.configure(text=self._t("copy_paths"))
         self.open_paths_button.configure(text=self._t("open_paths"))
         self.open_debug_folder_button.configure(text=self._t("open_debug_folder"))

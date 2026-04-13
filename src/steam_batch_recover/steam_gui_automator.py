@@ -95,9 +95,8 @@ class SteamGuiAutomator:
             self._emit(on_progress, "Steam process not detected in taskbar. Checking window by title...")
 
         try:
-            windows = pygetwindow.getWindowsWithTitle("Steam")
-            if windows:
-                win = windows[0]
+            win = self._find_steam_window()
+            if win is not None:
                 if win.isMinimized:
                     self._emit(on_progress, "Steam window is minimized. Restoring...")
                     win.restore()
@@ -114,6 +113,37 @@ class SteamGuiAutomator:
         except Exception as exc:
             self._emit(on_progress, f"Window focus attempt failed (non-fatal): {exc}")
             self._try_activate_from_taskbar(on_progress)
+
+    def _find_steam_window(self):
+        """Pick the actual Steam client window and avoid false positives like this app window."""
+        try:
+            windows = pygetwindow.getWindowsWithTitle("Steam")
+        except Exception:
+            return None
+
+        if not windows:
+            return None
+
+        candidates = []
+        for win in windows:
+            title = (win.title or "").strip()
+            if not title:
+                continue
+            lower = title.lower()
+            if "batch restore assistant" in lower or "批次還原助手" in title:
+                continue
+            # Keep only likely Steam client windows.
+            if title == "Steam" or lower.startswith("steam -") or "steam client" in lower:
+                candidates.append(win)
+
+        if candidates:
+            return candidates[0]
+
+        # Fallback: choose the shortest non-tool title containing Steam.
+        fallback = [w for w in windows if "批次還原助手" not in (w.title or "") and "batch restore assistant" not in (w.title or "").lower()]
+        if not fallback:
+            return None
+        return sorted(fallback, key=lambda item: len((item.title or "").strip()))[0]
 
     def _try_activate_from_taskbar(self, on_progress: callable | None) -> None:
         # Auto-hidden taskbar needs a mouse move to screen bottom before template matching.
@@ -132,9 +162,9 @@ class SteamGuiAutomator:
         if clicked:
             time.sleep(0.8)
             try:
-                windows = pygetwindow.getWindowsWithTitle("Steam")
-                if windows:
-                    windows[0].activate()
+                win = self._find_steam_window()
+                if win is not None:
+                    win.activate()
                     self._emit(on_progress, "Steam activated from taskbar fallback.")
                     return
             except Exception:

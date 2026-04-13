@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import json
 import subprocess
 import tempfile
 import time
@@ -37,6 +38,7 @@ class SteamGuiSettings:
     cursor_move_speed_pixels_per_sec: float = 500.0
     cursor_hover_pause_seconds: float = 0.2
     menu_hover_maintain_interval_seconds: float = 0.5
+    debug_output_dir: Path | None = None
 
 
 class SteamGuiAutomator:
@@ -50,6 +52,7 @@ class SteamGuiAutomator:
         _enable_dpi_awareness()
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = 0.15
+        self._debug_step_index = 0
 
     def run_batch_restore(
         self,
@@ -361,6 +364,8 @@ class SteamGuiAutomator:
         """
         deadline = time.monotonic() + timeout_seconds
         last_maintain_time = time.monotonic()
+        latest_candidates: list[dict] = []
+        latest_screen_bgr: np.ndarray | None = None
 
         while time.monotonic() < deadline:
             # Periodically re-hover menu to keep dropdown active.
@@ -371,6 +376,10 @@ class SteamGuiAutomator:
                     self._maintain_menu_hover(menu_center_x, menu_center_y, menu_region)
                     last_maintain_time = now
 
+            screenshot = pyautogui.screenshot()
+            latest_screen_bgr = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+            current_candidates: list[dict] = []
+
             for image_name in image_names:
                 template = self.templates_root / image_name
                 if not template.exists():
@@ -380,29 +389,45 @@ class SteamGuiAutomator:
                         self._emit(self._progress_callback, f"Template missing: {template}")
                     continue
                 try:
-                    found = self._locate_with_multiscale(template, region=region)
+                    found = self._locate_with_multiscale(template, region=region, screen_bgr=latest_screen_bgr, enforce_confidence=False)
                 except Exception:
                     found = None
                 if found is not None:
+                    current_candidates.append(found)
+                    if found["score"] < self.settings.confidence:
+                        continue
+                    latest_candidates = current_candidates
+                    self._save_match_debug_artifacts(step_name, latest_screen_bgr, current_candidates, found, region)
                     self._emit(
                         self._progress_callback,
                         f"Template matched: {template.name} score={found['score']:.3f} click=({found['click'][0]},{found['click'][1]})",
                     )
                     return found
+            if current_candidates:
+                latest_candidates = current_candidates
             time.sleep(0.3)
 
         screenshot_path = None
         if self.settings.debug_screenshots:
-            screenshot_path = self._save_debug_screenshot(step_name)
+            screenshot_path = self._save_debug_screenshot(step_name, latest_screen_bgr)
             if screenshot_path is not None:
                 self._emit(self._progress_callback, f"Debug screenshot saved: {screenshot_path}")
+        if latest_screen_bgr is not None:
+            self._save_match_debug_artifacts(step_name, latest_screen_bgr, latest_candidates, None, region)
         if raise_on_timeout:
             raise SteamGuiAutomationError(f"Timed out while waiting for: {step_name}")
         return None
 
-    def _locate_with_multiscale(self, template_path: Path, region: tuple[int, int, int, int] | None = None):
-        screenshot = pyautogui.screenshot()
-        screen_bgr = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+    def _locate_with_multiscale(
+        self,
+        template_path: Path,
+        region: tuple[int, int, int, int] | None = None,
+        screen_bgr: np.ndarray | None = None,
+        enforce_confidence: bool = True,
+    ):
+        if screen_bgr is None:
+            screenshot = pyautogui.screenshot()
+            screen_bgr = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
         gray_screen = cv2.cvtColor(screen_bgr, cv2.COLOR_BGR2GRAY)
 
         offset_x = 0
@@ -445,7 +470,7 @@ class SteamGuiAutomator:
 
         if best_rect is None:
             return None
-        if best_score < self.settings.confidence:
+        if enforce_confidence and best_score < self.settings.confidence:
             return None
 
         left, top, width, height = best_rect
@@ -460,6 +485,7 @@ class SteamGuiAutomator:
             "score": float(best_score),
             "box": (abs_left, abs_top, width, height),
             "click": (click_x, click_y),
+            "region": region,
         }
 
     def _get_match_template(self, template_path: Path) -> np.ndarray | None:
@@ -561,16 +587,78 @@ class SteamGuiAutomator:
         screen = pyautogui.size()
         return (0, 0, int(screen.width * 0.55), int(screen.height * 0.55))
 
-    def _save_debug_screenshot(self, step_name: str) -> Path | None:
+    def _save_debug_screenshot(self, step_name: str, screen_bgr: np.ndarray | None = None) -> Path | None:
         try:
             safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in step_name)
-            debug_dir = Path(tempfile.gettempdir()) / "SteamBatchRecover_debug"
+            debug_dir = self.settings.debug_output_dir or (Path(tempfile.gettempdir()) / "SteamBatchRecover_debug")
             debug_dir.mkdir(parents=True, exist_ok=True)
             out_path = debug_dir / f"fail_{safe_name}_{int(time.time())}.png"
-            pyautogui.screenshot(str(out_path))
+            if screen_bgr is None:
+                pyautogui.screenshot(str(out_path))
+            else:
+                cv2.imwrite(str(out_path), screen_bgr)
             return out_path
         except Exception:
             return None
+
+    def _save_match_debug_artifacts(
+        self,
+        step_name: str,
+        screen_bgr: np.ndarray,
+        candidates: list[dict],
+        selected: dict | None,
+        region: tuple[int, int, int, int] | None,
+    ) -> None:
+        try:
+            debug_dir = self.settings.debug_output_dir or (Path(tempfile.gettempdir()) / "SteamBatchRecover_debug")
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in step_name)
+            self._debug_step_index += 1
+            prefix = f"{self._debug_step_index:03d}_{safe_name}"
+
+            annotated = screen_bgr.copy()
+            if region is not None:
+                rx, ry, rw, rh = region
+                cv2.rectangle(annotated, (rx, ry), (rx + rw, ry + rh), (255, 0, 0), 2)
+
+            sorted_candidates = sorted(candidates, key=lambda item: item["score"], reverse=True)
+            for idx, item in enumerate(sorted_candidates[:10], start=1):
+                x, y, w, h = item["box"]
+                score = item["score"]
+                is_selected = selected is not None and item["template"] == selected["template"] and item["box"] == selected["box"]
+                color = (0, 255, 0) if is_selected else ((0, 200, 255) if score >= self.settings.confidence else (0, 0, 255))
+                cv2.rectangle(annotated, (x, y), (x + w, y + h), color, 2)
+                cv2.circle(annotated, item["click"], 4, color, -1)
+                label = f"{idx}:{item['template']} {score:.3f}"
+                cv2.putText(annotated, label, (x, max(20, y - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+
+            image_path = debug_dir / f"{prefix}.png"
+            json_path = debug_dir / f"{prefix}.json"
+            cv2.imwrite(str(image_path), annotated)
+            report = {
+                "step": step_name,
+                "threshold": self.settings.confidence,
+                "region": list(region) if region is not None else None,
+                "selected": {
+                    "template": selected["template"],
+                    "score": selected["score"],
+                    "box": list(selected["box"]),
+                    "click": list(selected["click"]),
+                } if selected is not None else None,
+                "candidates": [
+                    {
+                        "template": item["template"],
+                        "score": item["score"],
+                        "box": list(item["box"]),
+                        "click": list(item["click"]),
+                    }
+                    for item in sorted_candidates
+                ],
+            }
+            json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+            self._emit(self._progress_callback, f"Match debug saved: {image_path}")
+        except Exception as exc:
+            self._emit(self._progress_callback, f"Failed to save match debug for {step_name}: {exc}")
 
     @staticmethod
     def _emit(callback: callable | None, message: str) -> None:

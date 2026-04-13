@@ -13,7 +13,7 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from .models import BackupKind, GameBackup
 from .scanner import scan_backups
-from .steam_gui_automator import SteamGuiAutomationError, SteamGuiAutomator
+from .steam_gui_automator import SteamGuiAutomationError, SteamGuiAutomator, SteamGuiSettings
 
 
 def run_app() -> None:
@@ -193,7 +193,8 @@ class SteamBatchRecoverApp(tk.Tk):
         self.summary_var = tk.StringVar()
         self.space_var = tk.StringVar()
         self.debug_folder = Path(tempfile.gettempdir()) / "SteamBatchRecover_debug"
-        self.debug_log_file = self.debug_folder / "session.log"
+        self.current_debug_run_folder = self.debug_folder
+        self.debug_log_file = self.current_debug_run_folder / "session.log"
         self.debug_window: tk.Toplevel | None = None
         self.debug_text: scrolledtext.ScrolledText | None = None
 
@@ -371,7 +372,9 @@ class SteamBatchRecoverApp(tk.Tk):
             self._append_log(self._t("lang_template_fallback"))
 
         templates_root = _resolve_templates_root(template_language)
-        self._append_log(self._t("debug_folder_hint", path=self.debug_folder))
+        self.current_debug_run_folder = self._create_debug_run_folder()
+        self.debug_log_file = self.current_debug_run_folder / "session.log"
+        self._append_log(self._t("debug_folder_hint", path=self.current_debug_run_folder))
         self._append_log(f"Templates root: {templates_root}")
         if not templates_root.exists():
             messagebox.showerror(self._t("scan_failed_title"), f"Template folder not found: {templates_root}")
@@ -382,7 +385,7 @@ class SteamBatchRecoverApp(tk.Tk):
         self._set_busy(True, self._t("steam_restore_running"))
         threading.Thread(
             target=self._steam_restore_worker,
-            args=(steam_path, restore_paths, templates_root, start_from_restore_wizard),
+            args=(steam_path, restore_paths, templates_root, start_from_restore_wizard, self.current_debug_run_folder),
             daemon=True,
         ).start()
 
@@ -392,9 +395,13 @@ class SteamBatchRecoverApp(tk.Tk):
         restore_paths: list[Path],
         templates_root: Path,
         start_from_restore_wizard: bool,
+        debug_run_folder: Path,
     ) -> None:
         self._queue_log(f"Steam restore worker started. steam={steam_path}")
-        automator = SteamGuiAutomator(templates_root=templates_root)
+        automator = SteamGuiAutomator(
+            templates_root=templates_root,
+            settings=SteamGuiSettings(debug_output_dir=debug_run_folder),
+        )
         try:
             automator.run_batch_restore(
                 steam_path,
@@ -422,7 +429,7 @@ class SteamBatchRecoverApp(tk.Tk):
     def _steam_restore_failed(self, error: str) -> None:
         self._set_busy(False, self._t("status_ready"))
         self._append_log(self._t("steam_restore_failed", error=error))
-        self._append_log(self._t("debug_folder_hint", path=self.debug_folder))
+        self._append_log(self._t("debug_folder_hint", path=self.current_debug_run_folder))
         messagebox.showerror(self._t("scan_failed_title"), self._t("steam_restore_failed", error=error))
 
     def _queue_log(self, message: str) -> None:
@@ -498,11 +505,17 @@ class SteamBatchRecoverApp(tk.Tk):
 
     def _append_debug_file_line(self, message: str) -> None:
         try:
-            self.debug_folder.mkdir(parents=True, exist_ok=True)
+            self.current_debug_run_folder.mkdir(parents=True, exist_ok=True)
             with self.debug_log_file.open("a", encoding="utf-8") as handle:
                 handle.write(message + "\n")
         except OSError:
             pass
+
+    def _create_debug_run_folder(self) -> Path:
+        timestamp = datetime.now().strftime("run_%Y%m%d_%H%M%S")
+        run_folder = self.debug_folder / timestamp
+        run_folder.mkdir(parents=True, exist_ok=True)
+        return run_folder
 
     def _refresh_space_summary(self) -> None:
         selected = self._selected_backups()

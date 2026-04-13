@@ -34,6 +34,9 @@ class SteamGuiSettings:
     max_scale: float = 1.3
     scale_step: float = 0.06
     manual_takeover_seconds: float = 15.0
+    cursor_move_speed_pixels_per_sec: float = 500.0
+    cursor_hover_pause_seconds: float = 0.2
+    menu_hover_maintain_interval_seconds: float = 0.5
 
 
 class SteamGuiAutomator:
@@ -84,11 +87,16 @@ class SteamGuiAutomator:
             start_from_restore_wizard = False
 
     def _focus_steam_window(self, on_progress: callable | None) -> None:
+        # First check if Steam process is running at all.
+        if not self._check_steam_running():
+            self._emit(on_progress, "Steam process not detected in taskbar. Checking window by title...")
+
         try:
             windows = pygetwindow.getWindowsWithTitle("Steam")
             if windows:
                 win = windows[0]
                 if win.isMinimized:
+                    self._emit(on_progress, "Steam window is minimized. Restoring...")
                     win.restore()
                 try:
                     win.moveTo(0, 0)
@@ -139,6 +147,17 @@ class SteamGuiAutomator:
                 if not menu_clicked:
                     self._wait_for_restore_wizard_manual(on_progress)
                 else:
+                    # Find the menu center to maintain menu hover during restore item search.
+                    menu_loc = self._locate_with_multiscale(
+                        self.templates_root / "en_03_SteamMenu_TopLeft.png", region=menu_region
+                    ) or self._locate_with_multiscale(
+                        self.templates_root / "en_03_SteamMenu_TopLeft_PART.png", region=menu_region
+                    )
+                    menu_center = (None, None)
+                    if menu_loc:
+                        center = (menu_loc["click"][0], menu_loc["click"][1])
+                        menu_center = (center[0], center[1] + 60, menu_region)  # Offset to menu hover area
+
                     restore_clicked = self._click_first_optional(
                         [
                             "en_05_Game_Restore.png",
@@ -148,6 +167,7 @@ class SteamGuiAutomator:
                         "Restore Game Backup menu item",
                         timeout_seconds=8.0,
                         region=menu_region,
+                        maintain_menu_position=menu_center if menu_center[0] is not None else None,
                     )
                     if not restore_clicked:
                         self._emit(on_progress, "Restore menu item not matched. Switching to manual wizard takeover.")
@@ -197,6 +217,40 @@ class SteamGuiAutomator:
         except pyautogui.FailSafeException as exc:
             raise SteamGuiAutomationError(auto_fail_safe_message) from exc
 
+    def _check_steam_running(self) -> bool:
+        """Check if Steam process is running on Windows."""
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq steam.exe"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            return "steam.exe" in result.stdout.lower()
+        except Exception:
+            return False
+
+    def _smooth_move_to(self, target_x: int, target_y: int) -> None:
+        """Move cursor smoothly from current position to target based on configured speed."""
+        current = pyautogui.position()
+        dist_x = target_x - current.x
+        dist_y = target_y - current.y
+        distance = (dist_x**2 + dist_y**2) ** 0.5
+
+        if distance < 1:
+            return
+
+        # Calculate duration based on configured speed (pixels per second).
+        duration = distance / max(self.settings.cursor_move_speed_pixels_per_sec, 100)
+        pyautogui.moveTo(target_x, target_y, duration=duration)
+
+    def _maintain_menu_hover(self, menu_center_x: int, menu_center_y: int, menu_region: tuple[int, int, int, int]) -> None:
+        """Periodically re-hover over the menu dropdown area to keep menu active."""
+        hover_x = min(menu_center_x + 24, menu_region[0] + menu_region[2] - 10)
+        hover_y = min(menu_center_y + 90, menu_region[1] + menu_region[3] - 10)
+        self._smooth_move_to(hover_x, hover_y)
+        time.sleep(0.05)
+
     def _open_steam_menu(self, menu_region: tuple[int, int, int, int]) -> bool:
         self._emit(self._progress_callback, "Opening Steam menu and hovering into dropdown area.")
         found = self._wait_for_any(
@@ -210,13 +264,14 @@ class SteamGuiAutomator:
             return False
 
         center = pyautogui.center(found)
-        pyautogui.moveTo(center.x, center.y, duration=0.15)
+        self._smooth_move_to(center.x, center.y)
         pyautogui.click()
         time.sleep(0.25)
 
+        # Move cursor into dropdown area and keep it there.
         hover_x = min(center.x + 24, menu_region[0] + menu_region[2] - 10)
         hover_y = min(center.y + 90, menu_region[1] + menu_region[3] - 10)
-        pyautogui.moveTo(hover_x, hover_y, duration=0.18)
+        self._smooth_move_to(hover_x, hover_y)
         time.sleep(self.settings.post_click_pause_seconds)
         self._emit(self._progress_callback, f"Steam menu hover hold at x={hover_x}, y={hover_y}")
         return True
@@ -255,7 +310,9 @@ class SteamGuiAutomator:
             self._progress_callback,
             f"Matched {step_name} via {found['template']} at x={click_x}, y={click_y}, score={found['score']:.3f}",
         )
-        pyautogui.moveTo(click_x, click_y, duration=0.15)
+        # Smooth movement to target, brief hover, then click.
+        self._smooth_move_to(click_x, click_y)
+        time.sleep(self.settings.cursor_hover_pause_seconds)
         pyautogui.click()
         time.sleep(self.settings.post_click_pause_seconds)
 
@@ -265,9 +322,17 @@ class SteamGuiAutomator:
         step_name: str,
         timeout_seconds: float = 3.0,
         region: tuple[int, int, int, int] | None = None,
+        maintain_menu_position: tuple[int, int, tuple[int, int, int, int]] | None = None,
     ) -> bool:
         self._emit(self._progress_callback, f"Waiting optional step: {step_name} | templates={image_names}")
-        found = self._wait_for_any(image_names, timeout_seconds, step_name, raise_on_timeout=False, region=region)
+        found = self._wait_for_any(
+            image_names,
+            timeout_seconds,
+            step_name,
+            raise_on_timeout=False,
+            region=region,
+            maintain_menu_position=maintain_menu_position,
+        )
         if found is None:
             return False
         click_x, click_y = found["click"]
@@ -275,7 +340,9 @@ class SteamGuiAutomator:
             self._progress_callback,
             f"Matched optional {step_name} via {found['template']} at x={click_x}, y={click_y}, score={found['score']:.3f}",
         )
-        pyautogui.moveTo(click_x, click_y, duration=0.15)
+        # Smooth movement to target, brief hover, then click.
+        self._smooth_move_to(click_x, click_y)
+        time.sleep(self.settings.cursor_hover_pause_seconds)
         pyautogui.click()
         time.sleep(self.settings.post_click_pause_seconds)
         return True
@@ -287,9 +354,23 @@ class SteamGuiAutomator:
         step_name: str,
         raise_on_timeout: bool = True,
         region: tuple[int, int, int, int] | None = None,
+        maintain_menu_position: tuple[int, int, tuple[int, int, int, int]] | None = None,
     ):
+        """
+        maintain_menu_position: tuple of (menu_center_x, menu_center_y, menu_region) to keep menu active.
+        """
         deadline = time.monotonic() + timeout_seconds
+        last_maintain_time = time.monotonic()
+
         while time.monotonic() < deadline:
+            # Periodically re-hover menu to keep dropdown active.
+            if maintain_menu_position is not None:
+                now = time.monotonic()
+                if now - last_maintain_time >= self.settings.menu_hover_maintain_interval_seconds:
+                    menu_center_x, menu_center_y, menu_region = maintain_menu_position
+                    self._maintain_menu_hover(menu_center_x, menu_center_y, menu_region)
+                    last_maintain_time = now
+
             for image_name in image_names:
                 template = self.templates_root / image_name
                 if not template.exists():

@@ -52,6 +52,7 @@ LOCALE_DATA = {
         "app_id": "App ID",
         "game": "遊戲",
         "backup_time": "備份時間",
+        "updated_time": "上次更新",
         "size": "大小",
         "source_col": "來源",
         "no_scan": "尚未掃描",
@@ -112,6 +113,7 @@ LOCALE_DATA = {
         "app_id": "App ID",
         "game": "游戏",
         "backup_time": "备份时间",
+        "updated_time": "上次更新",
         "size": "大小",
         "source_col": "来源",
         "no_scan": "尚未扫描",
@@ -172,6 +174,7 @@ LOCALE_DATA = {
         "app_id": "App ID",
         "game": "Game",
         "backup_time": "Backup Time",
+        "updated_time": "Last Updated",
         "size": "Size",
         "source_col": "Source",
         "no_scan": "No scan yet",
@@ -204,9 +207,13 @@ LOCALE_DATA = {
 class SteamBatchRecoverApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.geometry("1440x860")
-        self.minsize(1180, 760)
+        self.minsize(980, 640)
         self.configure(bg="#0a1423")
+        self.overrideredirect(True)
+        self._restore_geometry = ""
+        self._is_maximized = False
+        self._drag_offset_x = 0
+        self._drag_offset_y = 0
 
         self.locale_var = tk.StringVar(value="zh-TW")
         self.repository_var = tk.StringVar()
@@ -221,11 +228,22 @@ class SteamBatchRecoverApp(tk.Tk):
         self.backups: list[GameBackup] = []
         self.current_view = "none"
 
+        self._set_initial_geometry()
         self._configure_styles()
         self._build_layout()
         self._apply_locale()
+        self.bind("<Map>", self._on_window_map)
         if self.target_library_var.get().strip():
             self._append_log(self._t("using_target_library", path=self.target_library_var.get().strip()))
+
+    def _set_initial_geometry(self) -> None:
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        width = min(1380, max(1080, screen_width - 80))
+        height = min(840, max(680, screen_height - 120))
+        pos_x = max(0, (screen_width - width) // 2)
+        pos_y = max(0, (screen_height - height) // 2)
+        self.geometry(f"{width}x{height}+{pos_x}+{pos_y}")
 
     def _configure_styles(self) -> None:
         style = ttk.Style(self)
@@ -283,10 +301,38 @@ class SteamBatchRecoverApp(tk.Tk):
 
     def _build_layout(self) -> None:
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
+        self.rowconfigure(1, weight=1)
+
+        titlebar = tk.Frame(self, bg="#08111d", height=34, highlightthickness=0)
+        titlebar.grid(row=0, column=0, sticky="ew")
+        titlebar.grid_propagate(False)
+        titlebar.columnconfigure(1, weight=1)
+        titlebar.bind("<ButtonPress-1>", self._start_window_drag)
+        titlebar.bind("<B1-Motion>", self._on_window_drag)
+        titlebar.bind("<Double-Button-1>", lambda _: self._toggle_maximize())
+
+        self.window_title_label = tk.Label(
+            titlebar,
+            bg="#08111d",
+            fg="#d8e7f7",
+            font=("Segoe UI Semibold", 10),
+            padx=12,
+            anchor="w",
+        )
+        self.window_title_label.grid(row=0, column=1, sticky="ew")
+        self.window_title_label.bind("<ButtonPress-1>", self._start_window_drag)
+        self.window_title_label.bind("<B1-Motion>", self._on_window_drag)
+        self.window_title_label.bind("<Double-Button-1>", lambda _: self._toggle_maximize())
+
+        self.min_button = tk.Button(titlebar, text="_", command=self._minimize_window, bg="#08111d", fg="#d8e7f7", bd=0, relief="flat", font=("Segoe UI", 10), width=4, activebackground="#133054", activeforeground="#ffffff")
+        self.min_button.grid(row=0, column=2, sticky="ns")
+        self.max_button = tk.Button(titlebar, text="□", command=self._toggle_maximize, bg="#08111d", fg="#d8e7f7", bd=0, relief="flat", font=("Segoe UI", 10), width=4, activebackground="#133054", activeforeground="#ffffff")
+        self.max_button.grid(row=0, column=3, sticky="ns")
+        self.close_button = tk.Button(titlebar, text="×", command=self.destroy, bg="#08111d", fg="#f5c9cf", bd=0, relief="flat", font=("Segoe UI", 11), width=4, activebackground="#c83c4b", activeforeground="#ffffff")
+        self.close_button.grid(row=0, column=4, sticky="ns")
 
         shell = tk.Frame(self, bg="#0a1423")
-        shell.grid(row=0, column=0, sticky="nsew")
+        shell.grid(row=1, column=0, sticky="nsew")
         shell.columnconfigure(0, weight=1)
         shell.rowconfigure(2, weight=1)
 
@@ -501,7 +547,7 @@ class SteamBatchRecoverApp(tk.Tk):
                     self._kind_label(backup.kind),
                     backup.app_id,
                     backup.name,
-                    self._display_backup_time(backup.backup_time),
+                    self._display_time_value(backup),
                     format_bytes(backup.required_bytes),
                     str(backup.source_path),
                 ),
@@ -510,6 +556,7 @@ class SteamBatchRecoverApp(tk.Tk):
         self.entries_stat_var.set(str(len(backups)))
         self.selected_stat_var.set("0")
         self.mode_var.set(self._t("mode_installed") if view == "installed" else self._t("mode_repository"))
+        self.tree.heading("backup_time", text=self._time_column_label())
         self.summary_var.set(self._t("detected_summary", count=len(backups), selected=0))
         self._refresh_space_summary()
         self._append_log(self._t("scan_complete", count=len(backups)))
@@ -697,9 +744,10 @@ class SteamBatchRecoverApp(tk.Tk):
         self.tree.heading("kind", text=self._t("type"))
         self.tree.heading("app_id", text=self._t("app_id"))
         self.tree.heading("name", text=self._t("game"))
-        self.tree.heading("backup_time", text=self._t("backup_time"))
+        self.tree.heading("backup_time", text=self._time_column_label())
         self.tree.heading("size", text=self._t("size"))
         self.tree.heading("source", text=self._t("source_col"))
+        self.window_title_label.configure(text=self._t("title"))
         self.status_var.set(self._t("status_ready"))
         if self.current_view == "installed":
             self.mode_var.set(self._t("mode_installed"))
@@ -726,25 +774,69 @@ class SteamBatchRecoverApp(tk.Tk):
                         self._kind_label(backup.kind),
                         backup.app_id,
                         backup.name,
-                        self._display_backup_time(backup.backup_time),
+                        self._display_time_value(backup),
                         format_bytes(backup.required_bytes),
                         str(backup.source_path),
                     ),
                 )
             self.tree.selection_set(list(selected_ids))
 
-    def _display_backup_time(self, backup_time: str | None) -> str:
-        if not backup_time:
+    def _display_time_value(self, backup: GameBackup) -> str:
+        if backup.kind is BackupKind.INSTALLED_GAME:
+            return self._display_iso_time(backup.last_updated_time)
+        return self._display_iso_time(backup.backup_time)
+
+    def _display_iso_time(self, value: str | None) -> str:
+        if not value:
             return "-"
         try:
-            return datetime.fromisoformat(backup_time).strftime("%Y-%m-%d %H:%M")
+            return datetime.fromisoformat(value).strftime("%Y-%m-%d %H:%M")
         except ValueError:
-            return backup_time
+            return value
+
+    def _time_column_label(self) -> str:
+        if self.current_view == "installed":
+            return self._t("updated_time")
+        return self._t("backup_time")
 
     def _no_selection_message(self) -> str:
         if self.current_view == "repository":
             return self._t("no_repository_selection")
         return self._t("no_installed_selection")
+
+    def _start_window_drag(self, event: tk.Event) -> None:
+        self._drag_offset_x = event.x_root - self.winfo_x()
+        self._drag_offset_y = event.y_root - self.winfo_y()
+
+    def _on_window_drag(self, event: tk.Event) -> None:
+        if self._is_maximized:
+            return
+        x = event.x_root - self._drag_offset_x
+        y = event.y_root - self._drag_offset_y
+        self.geometry(f"+{x}+{y}")
+
+    def _minimize_window(self) -> None:
+        self.overrideredirect(False)
+        self.iconify()
+
+    def _toggle_maximize(self) -> None:
+        if self._is_maximized:
+            if self._restore_geometry:
+                self.geometry(self._restore_geometry)
+            self._is_maximized = False
+            self.max_button.configure(text="□")
+            return
+
+        self._restore_geometry = self.geometry()
+        width = self.winfo_screenwidth()
+        height = self.winfo_screenheight() - 1
+        self.geometry(f"{width}x{height}+0+0")
+        self._is_maximized = True
+        self.max_button.configure(text="❐")
+
+    def _on_window_map(self, _: tk.Event) -> None:
+        if self.state() == "normal":
+            self.overrideredirect(True)
 
     def _detect_default_target_library(self) -> str:
         libraries = find_steam_library_roots()

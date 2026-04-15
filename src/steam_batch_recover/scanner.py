@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 
 from .models import BackupKind, GameBackup
@@ -145,6 +146,7 @@ def _scan_installed_game(manifest_path: Path, library_root: Path) -> GameBackup 
         return None
 
     required_bytes = manifest_path.stat().st_size + _directory_size(game_folder)
+    last_updated_time = _resolve_last_updated_time(metadata, manifest_path)
     return GameBackup(
         app_id=app_id,
         name=raw_name,
@@ -155,6 +157,7 @@ def _scan_installed_game(manifest_path: Path, library_root: Path) -> GameBackup 
         manifest_path=manifest_path,
         install_dir_name=install_dir,
         steam_library_path=library_root,
+        last_updated_time=last_updated_time,
     )
 
 
@@ -189,6 +192,20 @@ def _scan_repository_entry(repository_root: Path, entry: dict[str, object]) -> G
         backup_folder=entry_folder,
         backup_time=backup_time,
     )
+
+
+def _resolve_last_updated_time(metadata: dict[str, str], manifest_path: Path) -> str | None:
+    raw = metadata.get("lastupdated", "").strip()
+    if raw.isdigit():
+        try:
+            return datetime.fromtimestamp(int(raw)).astimezone().isoformat(timespec="seconds")
+        except (OverflowError, ValueError, OSError):
+            pass
+
+    try:
+        return datetime.fromtimestamp(manifest_path.stat().st_mtime).astimezone().isoformat(timespec="seconds")
+    except OSError:
+        return None
 
 
 def _parse_libraryfolders(path: Path) -> list[Path]:

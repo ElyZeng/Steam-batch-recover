@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Callable
@@ -8,6 +10,7 @@ from typing import Callable
 from .models import BackupKind, GameBackup
 
 ProgressCallback = Callable[[str], None]
+SAFE_NAME_PATTERN = re.compile(r"[^A-Za-z0-9._ -]+")
 
 
 def get_free_space_bytes(path: Path) -> int:
@@ -17,50 +20,92 @@ def get_free_space_bytes(path: Path) -> int:
     return shutil.disk_usage(target).free
 
 
-def restore_backups(
-    backups: list[GameBackup],
-    destination_root: Path,
+def backup_games_to_repository(
+    games: list[GameBackup],
+    repository_root: Path,
     overwrite: bool,
     on_progress: ProgressCallback | None = None,
 ) -> None:
-    destination_root.mkdir(parents=True, exist_ok=True)
+    repository_root.mkdir(parents=True, exist_ok=True)
+    entries_dir = repository_root / "entries"
+    entries_dir.mkdir(parents=True, exist_ok=True)
 
-    for backup in backups:
-        _emit(on_progress, f"Processing {backup.name} ({backup.app_id})")
-        if backup.kind is BackupKind.LIBRARY_SNAPSHOT:
-            _restore_library_snapshot(backup, destination_root, overwrite, on_progress)
-        else:
-            _stage_steam_package(backup, destination_root, overwrite, on_progress)
+    manifest_entries: list[dict[str, object]] = []
+    for game in games:
+        if game.kind is not BackupKind.INSTALLED_GAME:
+            continue
+        if game.manifest_path is None:
+            raise ValueError(f"Missing appmanifest for {game.name}")
+
+        folder_name = f"{game.app_id}_{_safe_name(game.name)}"
+        entry_dir = entries_dir / folder_name
+        game_target = entry_dir / "common" / (game.install_dir_name or game.restore_subpath)
+        manifest_target = entry_dir / game.manifest_path.name
+
+        _emit(on_progress, f"Backing up {game.name} ({game.app_id})")
+        _copy_path(game.source_path, game_target, overwrite, on_progress)
+        _copy_file(game.manifest_path, manifest_target, overwrite, on_progress)
+
+        backup_manifest = {
+            "app_id": game.app_id,
+            "name": game.name,
+            "install_dir_name": game.install_dir_name or game.restore_subpath,
+            "required_bytes": game.required_bytes,
+            "entry_folder": str(entry_dir.relative_to(repository_root)).replace("\\", "/"),
+            "game_path": str(game_target.relative_to(repository_root)).replace("\\", "/"),
+            "manifest_path": str(manifest_target.relative_to(repository_root)).replace("\\", "/"),
+            "source_library_path": str(game.steam_library_path) if game.steam_library_path else "",
+        }
+        (entry_dir / "backup_manifest.json").write_text(json.dumps(backup_manifest, indent=2), encoding="utf-8")
+        manifest_entries.append(backup_manifest)
+
+    _write_repository_manifest(repository_root, manifest_entries)
 
 
-def _restore_library_snapshot(
-    backup: GameBackup,
-    destination_root: Path,
+def restore_repository_backups(
+    backups: list[GameBackup],
+    steam_library_root: Path,
     overwrite: bool,
-    on_progress: ProgressCallback | None,
+    on_progress: ProgressCallback | None = None,
 ) -> None:
-    steamapps_dir = destination_root / "steamapps"
+    steamapps_dir = steam_library_root / "steamapps"
     common_dir = steamapps_dir / "common"
     common_dir.mkdir(parents=True, exist_ok=True)
 
-    if backup.manifest_path is None:
-        raise ValueError(f"Missing manifest for {backup.name}")
+    for backup in backups:
+        if backup.kind is not BackupKind.REPOSITORY_BACKUP:
+            continue
+        if backup.manifest_path is None:
+            raise ValueError(f"Missing manifest for {backup.name}")
 
-    game_destination = common_dir / (backup.install_dir_name or backup.restore_subpath)
-    manifest_destination = steamapps_dir / backup.manifest_path.name
+        game_destination = common_dir / (backup.install_dir_name or backup.restore_subpath)
+        manifest_destination = steamapps_dir / backup.manifest_path.name
+        _emit(on_progress, f"Restoring {backup.name} ({backup.app_id})")
+        _copy_path(backup.source_path, game_destination, overwrite, on_progress)
+        _copy_file(backup.manifest_path, manifest_destination, overwrite, on_progress)
 
-    _copy_path(backup.source_path, game_destination, overwrite, on_progress)
-    _copy_file(backup.manifest_path, manifest_destination, overwrite, on_progress)
 
+def _write_repository_manifest(repository_root: Path, new_entries: list[dict[str, object]]) -> None:
+    manifest_path = repository_root / "manifest.json"
+    existing_entries: dict[str, dict[str, object]] = {}
+    if manifest_path.exists():
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            for entry in payload.get("entries", []):
+                key = f"{entry.get('app_id', '')}:{entry.get('entry_folder', '')}"
+                existing_entries[key] = entry
+        except (OSError, json.JSONDecodeError):
+            existing_entries = {}
 
-def _stage_steam_package(
-    backup: GameBackup,
-    destination_root: Path,
-    overwrite: bool,
-    on_progress: ProgressCallback | None,
-) -> None:
-    package_destination = destination_root / backup.restore_subpath
-    _copy_path(backup.source_path, package_destination, overwrite, on_progress)
+    for entry in new_entries:
+        key = f"{entry.get('app_id', '')}:{entry.get('entry_folder', '')}"
+        existing_entries[key] = entry
+
+    payload = {
+        "version": 1,
+        "entries": sorted(existing_entries.values(), key=lambda item: (str(item.get("name", "")).lower(), str(item.get("app_id", "")))),
+    }
+    manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _copy_path(
@@ -97,6 +142,11 @@ def _copy_file(
 
     shutil.copy2(source, destination)
     _emit(on_progress, f"Copied: {destination}")
+
+
+def _safe_name(value: str) -> str:
+    cleaned = SAFE_NAME_PATTERN.sub("_", value).strip()
+    return cleaned or "steam_game"
 
 
 def _emit(callback: ProgressCallback | None, message: str) -> None:

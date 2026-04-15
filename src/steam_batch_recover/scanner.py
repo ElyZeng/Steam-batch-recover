@@ -166,6 +166,7 @@ def _scan_repository_entry(repository_root: Path, entry: dict[str, object]) -> G
     manifest_rel = str(entry.get("manifest_path", "")).strip()
     game_rel = str(entry.get("game_path", "")).strip()
     required_bytes = int(entry.get("required_bytes", 0) or 0)
+    backup_time = str(entry.get("backup_time", "")).strip() or None
 
     if not entry_folder_rel or not install_dir or not manifest_rel or not game_rel:
         return None
@@ -186,6 +187,7 @@ def _scan_repository_entry(repository_root: Path, entry: dict[str, object]) -> G
         manifest_path=manifest_path,
         install_dir_name=install_dir,
         backup_folder=entry_folder,
+        backup_time=backup_time,
     )
 
 

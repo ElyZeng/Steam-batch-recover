@@ -22,6 +22,7 @@ class GameBackup:
     install_dir_name: str | None = None
     steam_library_path: Path | None = None
     backup_folder: Path | None = None
+    backup_time: str | None = None
 
     @property
     def destination_hint(self) -> str:

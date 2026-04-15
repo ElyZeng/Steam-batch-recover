@@ -20,6 +20,7 @@ def run_app() -> None:
 LOCALE_DATA = {
     "zh-TW": {
         "title": "Steam 遊戲備份與還原助手",
+        "subtitle": "以倉庫與 manifest 管理跨機備份與還原流程",
         "language": "語言",
         "repository": "備份倉庫路徑",
         "target_library": "還原目標 Steam Library",
@@ -50,6 +51,7 @@ LOCALE_DATA = {
         "type": "類型",
         "app_id": "App ID",
         "game": "遊戲",
+        "backup_time": "備份時間",
         "size": "大小",
         "source_col": "來源",
         "no_scan": "尚未掃描",
@@ -64,9 +66,21 @@ LOCALE_DATA = {
         "free_space_warning": "目標空間不足。需要 {required}，目前剩餘 {free}。",
         "using_target_library": "目前目標還原路徑: {path}",
         "repository_manifest_hint": "備份倉庫將使用 manifest.json 與 entries/*/backup_manifest.json 管理。",
+        "mode_installed": "本機來源",
+        "mode_repository": "倉庫內容",
+        "hero_primary": "Steam Backup Repository",
+        "hero_secondary": "建立可攜式遊戲倉庫，並在另一台電腦直接還原到 Steam Library。",
+        "stat_entries": "清單項目",
+        "stat_selected": "目前選取",
+        "stat_target": "目標路徑",
+        "operation_log": "操作紀錄",
+        "content_title": "遊戲與備份清單",
+        "paths_title": "倉庫與目標",
+        "actions_title": "操作中心",
     },
     "zh-CN": {
         "title": "Steam 游戏备份与还原助手",
+        "subtitle": "以仓库与 manifest 管理跨机备份与还原流程",
         "language": "语言",
         "repository": "备份仓库路径",
         "target_library": "还原目标 Steam Library",
@@ -97,6 +111,7 @@ LOCALE_DATA = {
         "type": "类型",
         "app_id": "App ID",
         "game": "游戏",
+        "backup_time": "备份时间",
         "size": "大小",
         "source_col": "来源",
         "no_scan": "尚未扫描",
@@ -111,9 +126,21 @@ LOCALE_DATA = {
         "free_space_warning": "目标空间不足。需要 {required}，当前剩余 {free}。",
         "using_target_library": "当前目标还原路径: {path}",
         "repository_manifest_hint": "备份仓库会使用 manifest.json 与 entries/*/backup_manifest.json 进行管理。",
+        "mode_installed": "本机来源",
+        "mode_repository": "仓库内容",
+        "hero_primary": "Steam Backup Repository",
+        "hero_secondary": "建立可携式游戏仓库，并在另一台电脑直接还原到 Steam Library。",
+        "stat_entries": "列表项目",
+        "stat_selected": "当前选择",
+        "stat_target": "目标路径",
+        "operation_log": "操作日志",
+        "content_title": "游戏与备份列表",
+        "paths_title": "仓库与目标",
+        "actions_title": "操作中心",
     },
     "en": {
         "title": "Steam Game Backup and Restore Assistant",
+        "subtitle": "A manifest-driven repository workflow for cross-machine backup and restore.",
         "language": "Language",
         "repository": "Backup repository path",
         "target_library": "Target Steam library",
@@ -144,6 +171,7 @@ LOCALE_DATA = {
         "type": "Type",
         "app_id": "App ID",
         "game": "Game",
+        "backup_time": "Backup Time",
         "size": "Size",
         "source_col": "Source",
         "no_scan": "No scan yet",
@@ -158,6 +186,17 @@ LOCALE_DATA = {
         "free_space_warning": "Not enough free space. Need {required}, only {free} available.",
         "using_target_library": "Current restore target: {path}",
         "repository_manifest_hint": "The repository uses manifest.json and entries/*/backup_manifest.json.",
+        "mode_installed": "Installed Source",
+        "mode_repository": "Repository View",
+        "hero_primary": "Steam Backup Repository",
+        "hero_secondary": "Build a portable game archive and restore it directly into another Steam library.",
+        "stat_entries": "Entries",
+        "stat_selected": "Selected",
+        "stat_target": "Target",
+        "operation_log": "Operation Log",
+        "content_title": "Games and Repository Entries",
+        "paths_title": "Repository and Target",
+        "actions_title": "Operations",
     },
 }
 
@@ -165,8 +204,9 @@ LOCALE_DATA = {
 class SteamBatchRecoverApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.geometry("1220x760")
-        self.minsize(1040, 660)
+        self.geometry("1440x860")
+        self.minsize(1180, 760)
+        self.configure(bg="#0a1423")
 
         self.locale_var = tk.StringVar(value="zh-TW")
         self.repository_var = tk.StringVar()
@@ -174,106 +214,242 @@ class SteamBatchRecoverApp(tk.Tk):
         self.status_var = tk.StringVar()
         self.summary_var = tk.StringVar()
         self.space_var = tk.StringVar()
+        self.mode_var = tk.StringVar()
+        self.entries_stat_var = tk.StringVar(value="0")
+        self.selected_stat_var = tk.StringVar(value="0")
+        self.target_stat_var = tk.StringVar(value="-")
         self.backups: list[GameBackup] = []
         self.current_view = "none"
 
+        self._configure_styles()
         self._build_layout()
         self._apply_locale()
         if self.target_library_var.get().strip():
             self._append_log(self._t("using_target_library", path=self.target_library_var.get().strip()))
 
+    def _configure_styles(self) -> None:
+        style = ttk.Style(self)
+        style.theme_use("clam")
+
+        background = "#0a1423"
+        panel = "#111f34"
+        card = "#152742"
+        entry_bg = "#0f1d30"
+        accent = "#19a7ff"
+        accent_active = "#48bbff"
+        text = "#f4f7fb"
+        muted = "#93a9c4"
+        border = "#203553"
+
+        style.configure("Intel.TFrame", background=background)
+        style.configure("Card.TFrame", background=panel, relief="flat")
+        style.configure("Hero.TFrame", background=card, relief="flat")
+        style.configure("CardTitle.TLabel", background=panel, foreground=text, font=("Segoe UI Semibold", 11))
+        style.configure("HeroTitle.TLabel", background=card, foreground=text, font=("Segoe UI Semibold", 22))
+        style.configure("HeroSubtitle.TLabel", background=card, foreground=muted, font=("Segoe UI", 10))
+        style.configure("Intel.TLabel", background=background, foreground=text, font=("Segoe UI", 10))
+        style.configure("Panel.TLabel", background=panel, foreground=text, font=("Segoe UI", 10))
+        style.configure("Muted.TLabel", background=panel, foreground=muted, font=("Segoe UI", 9))
+        style.configure("MetricValue.TLabel", background=panel, foreground=text, font=("Segoe UI Semibold", 18))
+        style.configure("MetricCaption.TLabel", background=panel, foreground=muted, font=("Segoe UI", 9))
+        style.configure("Intel.TEntry", fieldbackground=entry_bg, foreground=text, insertcolor=text, bordercolor=border, lightcolor=border, darkcolor=border)
+        style.map("Intel.TEntry", bordercolor=[("focus", accent)], lightcolor=[("focus", accent)], darkcolor=[("focus", accent)])
+        style.configure("Intel.TCombobox", fieldbackground=entry_bg, background=entry_bg, foreground=text, bordercolor=border, arrowcolor=text)
+        style.map("Intel.TCombobox", fieldbackground=[("readonly", entry_bg)], foreground=[("readonly", text)], bordercolor=[("focus", accent)])
+        style.configure("Accent.TButton", background=accent, foreground="#04111d", padding=(14, 10), font=("Segoe UI Semibold", 10), borderwidth=0)
+        style.map("Accent.TButton", background=[("active", accent_active), ("pressed", "#0f8dd8")])
+        style.configure("Intel.TButton", background=card, foreground=text, padding=(14, 10), font=("Segoe UI", 10), bordercolor=border, lightcolor=border, darkcolor=border)
+        style.map("Intel.TButton", background=[("active", "#1a3558"), ("pressed", "#102338")], bordercolor=[("focus", accent)])
+        style.configure("Intel.Horizontal.TProgressbar", troughcolor="#0d1a2b", background=accent, bordercolor="#0d1a2b", lightcolor=accent, darkcolor=accent)
+        style.configure(
+            "Intel.Treeview",
+            background=entry_bg,
+            fieldbackground=entry_bg,
+            foreground=text,
+            bordercolor=border,
+            rowheight=30,
+            font=("Segoe UI", 10),
+        )
+        style.configure(
+            "Intel.Treeview.Heading",
+            background=panel,
+            foreground=text,
+            bordercolor=border,
+            font=("Segoe UI Semibold", 10),
+            padding=(10, 8),
+        )
+        style.map("Intel.Treeview", background=[("selected", "#1b68b3")], foreground=[("selected", text)])
+        style.map("Intel.Treeview.Heading", background=[("active", "#1c3351")])
+
     def _build_layout(self) -> None:
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
+        self.rowconfigure(2, weight=1)
 
-        controls = ttk.Frame(self, padding=12)
-        controls.grid(row=0, column=0, sticky="ew")
-        controls.columnconfigure(1, weight=1)
+        shell = tk.Frame(self, bg="#0a1423")
+        shell.grid(row=0, column=0, sticky="nsew")
+        shell.columnconfigure(0, weight=1)
+        shell.rowconfigure(2, weight=1)
 
-        self.language_label = ttk.Label(controls)
-        self.language_label.grid(row=0, column=0, sticky="w", pady=(0, 8))
+        hero = ttk.Frame(shell, style="Hero.TFrame", padding=20)
+        hero.grid(row=0, column=0, sticky="ew", padx=18, pady=(18, 12))
+        hero.columnconfigure(0, weight=1)
+        hero.columnconfigure(1, weight=0)
+
+        self.hero_title = ttk.Label(hero, style="HeroTitle.TLabel")
+        self.hero_title.grid(row=0, column=0, sticky="w")
+        self.hero_subtitle = ttk.Label(hero, style="HeroSubtitle.TLabel")
+        self.hero_subtitle.grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.status_chip = tk.Label(
+            hero,
+            textvariable=self.status_var,
+            bg="#1a3558",
+            fg="#f4f7fb",
+            padx=14,
+            pady=8,
+            font=("Segoe UI Semibold", 10),
+        )
+        self.status_chip.grid(row=0, column=1, rowspan=2, sticky="e")
+
+        dashboard = tk.Frame(shell, bg="#0a1423")
+        dashboard.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 12))
+        dashboard.columnconfigure(0, weight=3)
+        dashboard.columnconfigure(1, weight=2)
+
+        controls_card = ttk.Frame(dashboard, style="Card.TFrame", padding=18)
+        controls_card.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        controls_card.columnconfigure(1, weight=1)
+        ttk.Label(controls_card, style="CardTitle.TLabel", textvariable=self._stringvar_proxy("paths_title")).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 14))
+
+        self.language_label = ttk.Label(controls_card, style="Panel.TLabel")
+        self.language_label.grid(row=1, column=0, sticky="w", pady=(0, 10))
         self.language_combo = ttk.Combobox(
-            controls,
+            controls_card,
             textvariable=self.locale_var,
             state="readonly",
             values=("zh-TW", "zh-CN", "en"),
-            width=14,
+            width=16,
+            style="Intel.TCombobox",
         )
-        self.language_combo.grid(row=0, column=1, sticky="w", pady=(0, 8))
+        self.language_combo.grid(row=1, column=1, sticky="w", pady=(0, 10))
         self.language_combo.bind("<<ComboboxSelected>>", lambda _: self._apply_locale())
 
-        self.repository_label = ttk.Label(controls)
-        self.repository_label.grid(row=1, column=0, sticky="w", pady=(0, 8))
-        ttk.Entry(controls, textvariable=self.repository_var).grid(row=1, column=1, sticky="ew", padx=8, pady=(0, 8))
-        self.repository_browse_button = ttk.Button(controls, command=self._browse_repository)
-        self.repository_browse_button.grid(row=1, column=2, sticky="ew", pady=(0, 8))
+        self.repository_label = ttk.Label(controls_card, style="Panel.TLabel")
+        self.repository_label.grid(row=2, column=0, sticky="w", pady=(0, 10))
+        self.repository_entry = ttk.Entry(controls_card, textvariable=self.repository_var, style="Intel.TEntry")
+        self.repository_entry.grid(row=2, column=1, sticky="ew", padx=12, pady=(0, 10))
+        self.repository_browse_button = ttk.Button(controls_card, command=self._browse_repository, style="Intel.TButton")
+        self.repository_browse_button.grid(row=2, column=2, sticky="ew", pady=(0, 10))
 
-        self.target_label = ttk.Label(controls)
-        self.target_label.grid(row=2, column=0, sticky="w", pady=(0, 8))
-        ttk.Entry(controls, textvariable=self.target_library_var).grid(row=2, column=1, sticky="ew", padx=8, pady=(0, 8))
-        self.target_browse_button = ttk.Button(controls, command=self._browse_target_library)
-        self.target_browse_button.grid(row=2, column=2, sticky="ew", pady=(0, 8))
+        self.target_label = ttk.Label(controls_card, style="Panel.TLabel")
+        self.target_label.grid(row=3, column=0, sticky="w")
+        self.target_entry = ttk.Entry(controls_card, textvariable=self.target_library_var, style="Intel.TEntry")
+        self.target_entry.grid(row=3, column=1, sticky="ew", padx=12)
+        self.target_browse_button = ttk.Button(controls_card, command=self._browse_target_library, style="Intel.TButton")
+        self.target_browse_button.grid(row=3, column=2, sticky="ew")
 
-        actions = ttk.Frame(controls)
-        actions.grid(row=3, column=0, columnspan=3, sticky="ew")
+        metrics_card = ttk.Frame(dashboard, style="Card.TFrame", padding=18)
+        metrics_card.grid(row=0, column=1, sticky="nsew")
+        metrics_card.columnconfigure((0, 1, 2), weight=1)
+        self.metrics_title = ttk.Label(metrics_card, style="CardTitle.TLabel")
+        self.metrics_title.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 14))
+        self.mode_label = ttk.Label(metrics_card, style="Muted.TLabel", textvariable=self.mode_var)
+        self.mode_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 16))
 
-        self.scan_installed_button = ttk.Button(actions, command=self._scan_installed)
-        self.scan_installed_button.grid(row=0, column=0, padx=(0, 8))
-        self.scan_repository_button = ttk.Button(actions, command=self._scan_repository)
-        self.scan_repository_button.grid(row=0, column=1, padx=(0, 8))
-        self.select_all_button = ttk.Button(actions, command=self._select_all)
-        self.select_all_button.grid(row=0, column=2, padx=(0, 8))
-        self.clear_selection_button = ttk.Button(actions, command=self._clear_selection)
-        self.clear_selection_button.grid(row=0, column=3, padx=(0, 8))
-        self.backup_selected_button = ttk.Button(actions, command=self._backup_selected)
-        self.backup_selected_button.grid(row=0, column=4, padx=(0, 8))
-        self.restore_selected_button = ttk.Button(actions, command=self._restore_selected)
-        self.restore_selected_button.grid(row=0, column=5, padx=(0, 8))
-        self.copy_paths_button = ttk.Button(actions, command=self._copy_selected_paths)
-        self.copy_paths_button.grid(row=0, column=6, padx=(0, 8))
-        self.open_paths_button = ttk.Button(actions, command=self._open_selected_paths)
-        self.open_paths_button.grid(row=0, column=7, padx=(0, 8))
-        actions.columnconfigure(8, weight=1)
-        ttk.Label(actions, textvariable=self.status_var).grid(row=0, column=8, sticky="e")
+        self.metric_entries_caption = ttk.Label(metrics_card, style="MetricCaption.TLabel")
+        self.metric_entries_caption.grid(row=2, column=0, sticky="w")
+        ttk.Label(metrics_card, textvariable=self.entries_stat_var, style="MetricValue.TLabel").grid(row=3, column=0, sticky="w")
+        self.metric_selected_caption = ttk.Label(metrics_card, style="MetricCaption.TLabel")
+        self.metric_selected_caption.grid(row=2, column=1, sticky="w")
+        ttk.Label(metrics_card, textvariable=self.selected_stat_var, style="MetricValue.TLabel").grid(row=3, column=1, sticky="w")
+        self.metric_target_caption = ttk.Label(metrics_card, style="MetricCaption.TLabel")
+        self.metric_target_caption.grid(row=2, column=2, sticky="w")
+        ttk.Label(metrics_card, textvariable=self.target_stat_var, style="MetricValue.TLabel").grid(row=3, column=2, sticky="w")
+        ttk.Label(metrics_card, textvariable=self.summary_var, style="Muted.TLabel").grid(row=4, column=0, columnspan=3, sticky="w", pady=(18, 6))
+        ttk.Label(metrics_card, textvariable=self.space_var, style="Muted.TLabel").grid(row=5, column=0, columnspan=3, sticky="w")
 
-        center = ttk.Frame(self, padding=(12, 0, 12, 12))
-        center.grid(row=1, column=0, sticky="nsew")
-        center.columnconfigure(0, weight=3)
-        center.columnconfigure(1, weight=2)
-        center.rowconfigure(0, weight=1)
+        body = tk.Frame(shell, bg="#0a1423")
+        body.grid(row=2, column=0, sticky="nsew", padx=18, pady=(0, 18))
+        body.columnconfigure(0, weight=7)
+        body.columnconfigure(1, weight=3)
+        body.rowconfigure(1, weight=1)
 
-        columns = ("kind", "app_id", "name", "size", "source")
-        self.tree = ttk.Treeview(center, columns=columns, show="headings", selectmode="extended")
-        self.tree.grid(row=0, column=0, sticky="nsew")
-        self.tree.column("kind", width=160, anchor="center")
+        content_card = ttk.Frame(body, style="Card.TFrame", padding=18)
+        content_card.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 12))
+        content_card.columnconfigure(0, weight=1)
+        content_card.rowconfigure(2, weight=1)
+
+        self.content_title = ttk.Label(content_card, style="CardTitle.TLabel")
+        self.content_title.grid(row=0, column=0, sticky="w")
+        self.progressbar = ttk.Progressbar(content_card, mode="indeterminate", style="Intel.Horizontal.TProgressbar")
+        self.progressbar.grid(row=1, column=0, sticky="ew", pady=(12, 14))
+
+        columns = ("kind", "app_id", "name", "backup_time", "size", "source")
+        self.tree = ttk.Treeview(content_card, columns=columns, show="headings", selectmode="extended", style="Intel.Treeview")
+        self.tree.grid(row=2, column=0, sticky="nsew")
+        self.tree.column("kind", width=140, anchor="center")
         self.tree.column("app_id", width=90, anchor="center")
-        self.tree.column("name", width=260)
+        self.tree.column("name", width=240)
+        self.tree.column("backup_time", width=170, anchor="center")
         self.tree.column("size", width=120, anchor="e")
-        self.tree.column("source", width=520)
+        self.tree.column("source", width=460)
         self.tree.bind("<<TreeviewSelect>>", lambda _: self._refresh_space_summary())
+        tree_scrollbar = ttk.Scrollbar(content_card, orient="vertical", command=self.tree.yview)
+        tree_scrollbar.grid(row=2, column=1, sticky="ns")
+        self.tree.configure(yscrollcommand=tree_scrollbar.set)
 
-        scrollbar = ttk.Scrollbar(center, orient="vertical", command=self.tree.yview)
-        scrollbar.grid(row=0, column=0, sticky="nse")
-        self.tree.configure(yscrollcommand=scrollbar.set)
+        actions_card = ttk.Frame(body, style="Card.TFrame", padding=18)
+        actions_card.grid(row=0, column=1, sticky="nsew")
+        actions_card.columnconfigure(0, weight=1)
+        self.actions_title = ttk.Label(actions_card, style="CardTitle.TLabel")
+        self.actions_title.grid(row=0, column=0, sticky="w", pady=(0, 14))
+        self.scan_installed_button = ttk.Button(actions_card, command=self._scan_installed, style="Accent.TButton")
+        self.scan_installed_button.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        self.scan_repository_button = ttk.Button(actions_card, command=self._scan_repository, style="Intel.TButton")
+        self.scan_repository_button.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        self.backup_selected_button = ttk.Button(actions_card, command=self._backup_selected, style="Accent.TButton")
+        self.backup_selected_button.grid(row=3, column=0, sticky="ew", pady=(8, 10))
+        self.restore_selected_button = ttk.Button(actions_card, command=self._restore_selected, style="Intel.TButton")
+        self.restore_selected_button.grid(row=4, column=0, sticky="ew", pady=(0, 10))
+        self.select_all_button = ttk.Button(actions_card, command=self._select_all, style="Intel.TButton")
+        self.select_all_button.grid(row=5, column=0, sticky="ew", pady=(16, 10))
+        self.clear_selection_button = ttk.Button(actions_card, command=self._clear_selection, style="Intel.TButton")
+        self.clear_selection_button.grid(row=6, column=0, sticky="ew", pady=(0, 10))
+        self.copy_paths_button = ttk.Button(actions_card, command=self._copy_selected_paths, style="Intel.TButton")
+        self.copy_paths_button.grid(row=7, column=0, sticky="ew", pady=(16, 10))
+        self.open_paths_button = ttk.Button(actions_card, command=self._open_selected_paths, style="Intel.TButton")
+        self.open_paths_button.grid(row=8, column=0, sticky="ew")
 
-        log_panel = ttk.Frame(center)
-        log_panel.grid(row=0, column=1, sticky="nsew", padx=(12, 0))
-        log_panel.columnconfigure(0, weight=1)
-        log_panel.rowconfigure(1, weight=1)
+        log_card = ttk.Frame(body, style="Card.TFrame", padding=18)
+        log_card.grid(row=1, column=1, sticky="nsew", pady=(12, 0))
+        log_card.columnconfigure(0, weight=1)
+        log_card.rowconfigure(1, weight=1)
+        self.log_title = ttk.Label(log_card, style="CardTitle.TLabel")
+        self.log_title.grid(row=0, column=0, sticky="w", pady=(0, 12))
+        self.log_text = scrolledtext.ScrolledText(
+            log_card,
+            height=16,
+            wrap="word",
+            state="disabled",
+            bg="#0f1d30",
+            fg="#f4f7fb",
+            insertbackground="#f4f7fb",
+            relief="flat",
+            font=("Consolas", 10),
+            padx=10,
+            pady=10,
+        )
+        self.log_text.grid(row=1, column=0, sticky="nsew")
 
-        ttk.Label(log_panel, textvariable=self.summary_var).grid(row=0, column=0, sticky="w", pady=(0, 8))
-        ttk.Label(log_panel, textvariable=self.space_var).grid(row=1, column=0, sticky="nw")
-
-        self.log_text = scrolledtext.ScrolledText(log_panel, height=20, wrap="word", state="disabled")
-        self.log_text.grid(row=2, column=0, sticky="nsew", pady=(8, 0))
-
-        self.progressbar = ttk.Progressbar(log_panel, mode="indeterminate")
-        self.progressbar.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+    def _stringvar_proxy(self, key: str) -> tk.StringVar:
+        variable = tk.StringVar(value=self._t(key))
+        setattr(self, f"_{key}_var", variable)
+        return variable
 
     def _browse_repository(self) -> None:
         selected = filedialog.askdirectory(title=self._t("folder_dialog_repository"))
         if selected:
             self.repository_var.set(selected)
+            self._refresh_space_summary()
 
     def _browse_target_library(self) -> None:
         selected = filedialog.askdirectory(title=self._t("folder_dialog_target"))
@@ -325,11 +501,15 @@ class SteamBatchRecoverApp(tk.Tk):
                     self._kind_label(backup.kind),
                     backup.app_id,
                     backup.name,
+                    self._display_backup_time(backup.backup_time),
                     format_bytes(backup.required_bytes),
                     str(backup.source_path),
                 ),
             )
 
+        self.entries_stat_var.set(str(len(backups)))
+        self.selected_stat_var.set("0")
+        self.mode_var.set(self._t("mode_installed") if view == "installed" else self._t("mode_repository"))
         self.summary_var.set(self._t("detected_summary", count=len(backups), selected=0))
         self._refresh_space_summary()
         self._append_log(self._t("scan_complete", count=len(backups)))
@@ -409,7 +589,7 @@ class SteamBatchRecoverApp(tk.Tk):
     def _copy_selected_paths(self) -> None:
         selected = self._selected_backups()
         if not selected:
-            messagebox.showinfo(self._t("no_selection_title"), self._t("no_installed_selection"))
+            messagebox.showinfo(self._t("no_selection_title"), self._no_selection_message())
             return
         try:
             self.clipboard_clear()
@@ -423,7 +603,7 @@ class SteamBatchRecoverApp(tk.Tk):
     def _open_selected_paths(self) -> None:
         selected = self._selected_backups()
         if not selected:
-            messagebox.showinfo(self._t("no_selection_title"), self._t("no_installed_selection"))
+            messagebox.showinfo(self._t("no_selection_title"), self._no_selection_message())
             return
         opened = 0
         for item in selected[:10]:
@@ -461,6 +641,9 @@ class SteamBatchRecoverApp(tk.Tk):
             free_target = self.target_library_var.get().strip()
         free_bytes = get_free_space_bytes(Path(free_target)) if free_target else 0
         self.space_var.set(self._t("space_summary", size=format_bytes(required_bytes), free=format_bytes(free_bytes)))
+        self.selected_stat_var.set(str(len(selected)))
+        target_label = Path(free_target).name if free_target else "-"
+        self.target_stat_var.set(target_label[:18] + "..." if len(target_label) > 21 else target_label)
         if self.backups:
             self.summary_var.set(self._t("detected_summary", count=len(self.backups), selected=len(selected)))
         else:
@@ -475,8 +658,10 @@ class SteamBatchRecoverApp(tk.Tk):
         self.status_var.set(status)
         if busy:
             self.progressbar.start(10)
+            self.status_chip.configure(bg="#145a93")
         else:
             self.progressbar.stop()
+            self.status_chip.configure(bg="#1a3558")
 
     def _t(self, key: str, **kwargs: object) -> str:
         template = LOCALE_DATA[self.locale_var.get()][key]
@@ -486,6 +671,8 @@ class SteamBatchRecoverApp(tk.Tk):
 
     def _apply_locale(self) -> None:
         self.title(self._t("title"))
+        self.hero_title.configure(text=self._t("hero_primary"))
+        self.hero_subtitle.configure(text=self._t("hero_secondary"))
         self.language_label.configure(text=self._t("language"))
         self.repository_label.configure(text=self._t("repository"))
         self.target_label.configure(text=self._t("target_library"))
@@ -499,12 +686,27 @@ class SteamBatchRecoverApp(tk.Tk):
         self.restore_selected_button.configure(text=self._t("restore_selected"))
         self.copy_paths_button.configure(text=self._t("copy_paths"))
         self.open_paths_button.configure(text=self._t("open_paths"))
+        self.metrics_title.configure(text=self._t("stat_entries"))
+        self.actions_title.configure(text=self._t("actions_title"))
+        self.content_title.configure(text=self._t("content_title"))
+        self.log_title.configure(text=self._t("operation_log"))
+        self.metric_entries_caption.configure(text=self._t("stat_entries"))
+        self.metric_selected_caption.configure(text=self._t("stat_selected"))
+        self.metric_target_caption.configure(text=self._t("stat_target"))
+        getattr(self, "_paths_title_var").set(self._t("paths_title"))
         self.tree.heading("kind", text=self._t("type"))
         self.tree.heading("app_id", text=self._t("app_id"))
         self.tree.heading("name", text=self._t("game"))
+        self.tree.heading("backup_time", text=self._t("backup_time"))
         self.tree.heading("size", text=self._t("size"))
         self.tree.heading("source", text=self._t("source_col"))
         self.status_var.set(self._t("status_ready"))
+        if self.current_view == "installed":
+            self.mode_var.set(self._t("mode_installed"))
+        elif self.current_view == "repository":
+            self.mode_var.set(self._t("mode_repository"))
+        else:
+            self.mode_var.set("-")
         if not self.backups:
             self.summary_var.set(self._t("no_scan"))
             self.space_var.set(self._t("space_summary", size="0 B", free="0 B"))
@@ -524,11 +726,25 @@ class SteamBatchRecoverApp(tk.Tk):
                         self._kind_label(backup.kind),
                         backup.app_id,
                         backup.name,
+                        self._display_backup_time(backup.backup_time),
                         format_bytes(backup.required_bytes),
                         str(backup.source_path),
                     ),
                 )
             self.tree.selection_set(list(selected_ids))
+
+    def _display_backup_time(self, backup_time: str | None) -> str:
+        if not backup_time:
+            return "-"
+        try:
+            return datetime.fromisoformat(backup_time).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            return backup_time
+
+    def _no_selection_message(self) -> str:
+        if self.current_view == "repository":
+            return self._t("no_repository_selection")
+        return self._t("no_installed_selection")
 
     def _detect_default_target_library(self) -> str:
         libraries = find_steam_library_roots()

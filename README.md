@@ -17,6 +17,7 @@ A Windows desktop tool for backing up installed Steam games into a portable repo
 - Writes repository metadata into:
   - `manifest.json`
   - `entries/<app_id>_<name>/backup_manifest.json`
+  - each manifest entry now includes `backup_time` so backup recency is visible on other machines
 - Restores backed-up games by copying:
   - game files into `steamapps/common/<installdir>`
   - app manifests into `steamapps/appmanifest_<appid>.acf`

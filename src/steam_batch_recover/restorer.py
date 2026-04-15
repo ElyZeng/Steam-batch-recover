@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
@@ -37,6 +38,8 @@ def backup_games_to_repository(
         if game.manifest_path is None:
             raise ValueError(f"Missing appmanifest for {game.name}")
 
+        backup_time = datetime.now().astimezone().isoformat(timespec="seconds")
+
         folder_name = f"{game.app_id}_{_safe_name(game.name)}"
         entry_dir = entries_dir / folder_name
         game_target = entry_dir / "common" / (game.install_dir_name or game.restore_subpath)
@@ -55,6 +58,7 @@ def backup_games_to_repository(
             "game_path": str(game_target.relative_to(repository_root)).replace("\\", "/"),
             "manifest_path": str(manifest_target.relative_to(repository_root)).replace("\\", "/"),
             "source_library_path": str(game.steam_library_path) if game.steam_library_path else "",
+            "backup_time": backup_time,
         }
         (entry_dir / "backup_manifest.json").write_text(json.dumps(backup_manifest, indent=2), encoding="utf-8")
         manifest_entries.append(backup_manifest)

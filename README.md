@@ -73,6 +73,30 @@ pip install -r requirements.txt
 powershell -ExecutionPolicy Bypass -File .\build_exe.ps1
 ```
 
+### SmartScreen Warning (Windows protected your PC)
+
+If the EXE is unsigned, SmartScreen will usually show an "unrecognized app" warning.
+To reduce or eliminate this warning for users, sign the EXE with an Authenticode code-signing certificate.
+
+Local build signing (optional, supported by `build_exe.ps1`):
+
+```powershell
+$env:CODESIGN_CERT_PATH = "C:\path\to\your-cert.pfx"
+$env:CODESIGN_CERT_PASSWORD = "your-pfx-password"
+$env:CODESIGN_TIMESTAMP_URL = "http://timestamp.digicert.com"
+powershell -ExecutionPolicy Bypass -File .\build_exe.ps1
+```
+
+GitHub Actions signing (optional):
+
+1. Add repository secret `CODESIGN_CERT_PFX_BASE64` (base64 content of your `.pfx` file).
+2. Add repository secret `CODESIGN_CERT_PASSWORD`.
+3. Optional: add repository variable `CODESIGN_TIMESTAMP_URL`.
+
+Notes:
+- EV code-signing certificates build SmartScreen reputation faster than OV certificates.
+- Even with valid signing, new binaries may still warn until reputation is established.
+
 ## Current Scope
 
 This version no longer relies on Steam GUI automation for normal backup and restore flow. Existing Steam GUI automation files remain in the repository for prior experimentation, but the main app now uses the manifest-based repository architecture.

@@ -430,7 +430,7 @@ class SteamBatchRecoverApp(tk.Tk):
         self.progressbar.grid(row=1, column=0, sticky="ew", pady=(12, 14))
 
         columns = ("kind", "app_id", "name", "backup_time", "size", "source")
-        self.tree = ttk.Treeview(content_card, columns=columns, show="headings", selectmode="extended", style="Intel.Treeview")
+        self.tree = ttk.Treeview(content_card, columns=columns, show="headings", selectmode="none", style="Intel.Treeview")
         self.tree.grid(row=2, column=0, sticky="nsew")
         self.tree.column("kind", width=140, anchor="center")
         self.tree.column("app_id", width=90, anchor="center")
@@ -438,6 +438,7 @@ class SteamBatchRecoverApp(tk.Tk):
         self.tree.column("backup_time", width=170, anchor="center")
         self.tree.column("size", width=120, anchor="e")
         self.tree.column("source", width=460)
+        self.tree.bind("<Button-1>", self._on_tree_click)
         self.tree.bind("<<TreeviewSelect>>", lambda _: self._refresh_space_summary())
         tree_scrollbar = ttk.Scrollbar(content_card, orient="vertical", command=self.tree.yview)
         tree_scrollbar.grid(row=2, column=1, sticky="ns")
@@ -624,6 +625,23 @@ class SteamBatchRecoverApp(tk.Tk):
     def _select_all(self) -> None:
         self.tree.selection_set(self.tree.get_children())
         self._refresh_space_summary()
+
+    def _on_tree_click(self, event: tk.Event) -> str:
+        """Handle tree row clicking with toggle select logic."""
+        item = self.tree.identify_row(event.y)
+        if not item:
+            return "break"
+        
+        current_selection = set(self.tree.selection())
+        if item in current_selection:
+            # Item is selected, deselect it
+            current_selection.discard(item)
+        else:
+            # Item is not selected, select it
+            current_selection.add(item)
+        
+        self.tree.selection_set(current_selection)
+        return "break"
 
     def _clear_selection(self) -> None:
         self.tree.selection_remove(self.tree.selection())

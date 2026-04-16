@@ -627,21 +627,19 @@ class SteamBatchRecoverApp(tk.Tk):
         self._refresh_space_summary()
 
     def _on_tree_simple_click(self, event: tk.Event) -> str:
-        """Handle tree row clicking with simple toggle logic (click to select/deselect without Ctrl)."""
+        """Toggle clicked row selection without requiring Ctrl, while keeping other selected rows."""
         item = self.tree.identify_row(event.y)
         if not item:
             return "break"
-        
-        # Simple toggle: if clicked item is selected, deselect it; otherwise select only it
-        current_selection = set(self.tree.selection())
+
+        current_selection = self.tree.selection()
         if item in current_selection:
-            # Item is selected, deselect it
-            current_selection.discard(item)
+            self.tree.selection_remove(item)
         else:
-            # Item is not selected, deselect all and select only this one
-            current_selection = {item}
-        
-        self.tree.selection_set(current_selection)
+            self.tree.selection_add(item)
+
+        self.tree.focus(item)
+        self.tree.see(item)
         self.after(0, self._refresh_space_summary)
         return "break"
 

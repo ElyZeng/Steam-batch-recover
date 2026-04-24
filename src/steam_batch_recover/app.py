@@ -64,7 +64,8 @@ LOCALE_DATA = {
         "copy_done": "已將 {count} 個路徑複製到剪貼簿。",
         "copy_fail": "複製到剪貼簿失敗。",
         "open_paths_done": "已嘗試開啟 {count} 個資料夾。",
-        "free_space_warning": "目標空間不足。需要 {required}，目前剩餘 {free}。",
+        "free_space_warning": "目標空間不足。需要 {required}，目前剩餘 {free}。\n是否仍要繼續?",
+        "free_space_warning_title": "空間不足警告",
         "using_target_library": "目前目標還原路徑: {path}",
         "repository_manifest_hint": "備份倉庫將使用 manifest.json 與 entries/*/backup_manifest.json 管理。",
         "mode_installed": "本機來源",
@@ -125,7 +126,8 @@ LOCALE_DATA = {
         "copy_done": "已将 {count} 个路径复制到剪贴板。",
         "copy_fail": "复制到剪贴板失败。",
         "open_paths_done": "已尝试打开 {count} 个文件夹。",
-        "free_space_warning": "目标空间不足。需要 {required}，当前剩余 {free}。",
+        "free_space_warning": "目标空间不足。需要 {required}，当前剩余 {free}。\n是否仍要继续?",
+        "free_space_warning_title": "空间不足警告",
         "using_target_library": "当前目标还原路径: {path}",
         "repository_manifest_hint": "备份仓库会使用 manifest.json 与 entries/*/backup_manifest.json 进行管理。",
         "mode_installed": "本机来源",
@@ -186,7 +188,8 @@ LOCALE_DATA = {
         "copy_done": "Copied {count} path(s) to clipboard.",
         "copy_fail": "Failed to copy paths to clipboard.",
         "open_paths_done": "Attempted to open {count} folder(s).",
-        "free_space_warning": "Not enough free space. Need {required}, only {free} available.",
+        "free_space_warning": "Not enough free space. Need {required}, only {free} available.\nContinue anyway?",
+        "free_space_warning_title": "Insufficient Space",
         "using_target_library": "Current restore target: {path}",
         "repository_manifest_hint": "The repository uses manifest.json and entries/*/backup_manifest.json.",
         "mode_installed": "Installed Source",
@@ -225,6 +228,10 @@ class SteamBatchRecoverApp(tk.Tk):
         self.entries_stat_var = tk.StringVar(value="0")
         self.selected_stat_var = tk.StringVar(value="0")
         self.target_stat_var = tk.StringVar(value="-")
+        self.progress_text_var = tk.StringVar(value="-")
+        self._progress_mode = "idle"
+        self._progress_total = 0
+        self._progress_current = 0
         self.backups: list[GameBackup] = []
         self.current_view = "none"
 
@@ -426,7 +433,9 @@ class SteamBatchRecoverApp(tk.Tk):
 
         self.content_title = ttk.Label(content_card, style="CardTitle.TLabel")
         self.content_title.grid(row=0, column=0, sticky="w")
-        self.progressbar = ttk.Progressbar(content_card, mode="indeterminate", style="Intel.Horizontal.TProgressbar")
+        self.progress_percent_label = ttk.Label(content_card, style="Muted.TLabel", textvariable=self.progress_text_var)
+        self.progress_percent_label.grid(row=0, column=1, sticky="e")
+        self.progressbar = ttk.Progressbar(content_card, mode="indeterminate", style="Intel.Horizontal.TProgressbar", maximum=100, value=0)
         self.progressbar.grid(row=1, column=0, sticky="ew", pady=(12, 14))
 
         columns = ("kind", "app_id", "name", "backup_time", "size", "source")
@@ -575,7 +584,9 @@ class SteamBatchRecoverApp(tk.Tk):
             messagebox.showinfo(self._t("no_selection_title"), self._t("no_installed_selection"))
             return
         repository_root = Path(repository_text)
-        self._ensure_free_space(repository_root, selected)
+        if not self._ensure_free_space(repository_root, selected):
+            return
+        self._prepare_progress(total_steps=len(selected))
         self._set_busy(True, self._t("status_processing"))
         threading.Thread(target=self._backup_worker, args=(selected, repository_root), daemon=True).start()
 
@@ -597,7 +608,9 @@ class SteamBatchRecoverApp(tk.Tk):
             messagebox.showinfo(self._t("no_selection_title"), self._t("no_repository_selection"))
             return
         target_root = Path(target_text)
-        self._ensure_free_space(target_root, selected)
+        if not self._ensure_free_space(target_root, selected):
+            return
+        self._prepare_progress(total_steps=len(selected))
         self._set_busy(True, self._t("status_processing"))
         threading.Thread(target=self._restore_worker, args=(selected, target_root), daemon=True).start()
 
@@ -679,16 +692,22 @@ class SteamBatchRecoverApp(tk.Tk):
                 continue
         self._append_log(self._t("open_paths_done", count=opened))
 
-    def _ensure_free_space(self, target_path: Path, selected: list[GameBackup]) -> None:
+    def _ensure_free_space(self, target_path: Path, selected: list[GameBackup]) -> bool:
+        """Return True if it is safe to proceed (enough space or user confirmed). False means cancel."""
         required = sum(item.required_bytes for item in selected)
         free = get_free_space_bytes(target_path)
         if required > free:
-            messagebox.showwarning(
-                self._t("title"),
+            return messagebox.askokcancel(
+                self._t("free_space_warning_title"),
                 self._t("free_space_warning", required=format_bytes(required), free=format_bytes(free)),
+                icon="warning",
             )
+        return True
 
     def _queue_log(self, message: str) -> None:
+        if message.startswith("__PROGRESS__|"):
+            self.after(0, lambda: self._apply_progress_message(message))
+            return
         self.after(0, lambda: self._append_log(message))
 
     def _append_log(self, message: str) -> None:
@@ -722,11 +741,43 @@ class SteamBatchRecoverApp(tk.Tk):
     def _set_busy(self, busy: bool, status: str) -> None:
         self.status_var.set(status)
         if busy:
-            self.progressbar.start(10)
+            if self._progress_mode == "determinate":
+                self.progressbar.configure(mode="determinate")
+            else:
+                self.progressbar.configure(mode="indeterminate")
+                self.progressbar.start(10)
             self.status_chip.configure(bg="#145a93")
         else:
             self.progressbar.stop()
+            self.progressbar.configure(mode="indeterminate", value=0)
+            self.progress_text_var.set("-")
+            self._progress_mode = "idle"
+            self._progress_total = 0
+            self._progress_current = 0
             self.status_chip.configure(bg="#1a3558")
+
+    def _prepare_progress(self, total_steps: int) -> None:
+        self._progress_mode = "determinate"
+        self._progress_total = max(1, total_steps)
+        self._progress_current = 0
+        self.progressbar.configure(mode="determinate", maximum=100, value=0)
+        self.progress_text_var.set("0%")
+
+    def _apply_progress_message(self, message: str) -> None:
+        # message format: __PROGRESS__|current|total|operation|item_name
+        parts = message.split("|", 4)
+        if len(parts) != 5:
+            return
+        try:
+            current = int(parts[1])
+            total = max(1, int(parts[2]))
+        except ValueError:
+            return
+        self._progress_total = total
+        self._progress_current = max(0, min(current, total))
+        percent = (self._progress_current / self._progress_total) * 100
+        self.progressbar.configure(mode="determinate", maximum=100, value=percent)
+        self.progress_text_var.set(f"{percent:.0f}%")
 
     def _t(self, key: str, **kwargs: object) -> str:
         template = LOCALE_DATA[self.locale_var.get()][key]

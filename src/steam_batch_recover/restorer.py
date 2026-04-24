@@ -31,10 +31,11 @@ def backup_games_to_repository(
     entries_dir = repository_root / "entries"
     entries_dir.mkdir(parents=True, exist_ok=True)
 
+    valid_games = [game for game in games if game.kind is BackupKind.INSTALLED_GAME]
+    total_games = len(valid_games)
     manifest_entries: list[dict[str, object]] = []
-    for game in games:
-        if game.kind is not BackupKind.INSTALLED_GAME:
-            continue
+    completed_games = 0
+    for game in valid_games:
         if game.manifest_path is None:
             raise ValueError(f"Missing appmanifest for {game.name}")
 
@@ -63,6 +64,9 @@ def backup_games_to_repository(
         (entry_dir / "backup_manifest.json").write_text(json.dumps(backup_manifest, indent=2), encoding="utf-8")
         manifest_entries.append(backup_manifest)
 
+        completed_games += 1
+        _emit_progress(on_progress, completed_games, total_games, "backup", game.name)
+
     _write_repository_manifest(repository_root, manifest_entries)
 
 
@@ -76,9 +80,11 @@ def restore_repository_backups(
     common_dir = steamapps_dir / "common"
     common_dir.mkdir(parents=True, exist_ok=True)
 
-    for backup in backups:
-        if backup.kind is not BackupKind.REPOSITORY_BACKUP:
-            continue
+    valid_backups = [backup for backup in backups if backup.kind is BackupKind.REPOSITORY_BACKUP]
+    total_backups = len(valid_backups)
+    completed_backups = 0
+
+    for backup in valid_backups:
         if backup.manifest_path is None:
             raise ValueError(f"Missing manifest for {backup.name}")
 
@@ -87,6 +93,9 @@ def restore_repository_backups(
         _emit(on_progress, f"Restoring {backup.name} ({backup.app_id})")
         _copy_path(backup.source_path, game_destination, overwrite, on_progress)
         _copy_file(backup.manifest_path, manifest_destination, overwrite, on_progress)
+
+        completed_backups += 1
+        _emit_progress(on_progress, completed_backups, total_backups, "restore", backup.name)
 
 
 def _write_repository_manifest(repository_root: Path, new_entries: list[dict[str, object]]) -> None:
@@ -156,3 +165,16 @@ def _safe_name(value: str) -> str:
 def _emit(callback: ProgressCallback | None, message: str) -> None:
     if callback:
         callback(message)
+
+
+def _emit_progress(
+    callback: ProgressCallback | None,
+    current: int,
+    total: int,
+    operation: str,
+    item_name: str,
+) -> None:
+    if not callback:
+        return
+    safe_total = max(1, total)
+    callback(f"__PROGRESS__|{current}|{safe_total}|{operation}|{item_name}")

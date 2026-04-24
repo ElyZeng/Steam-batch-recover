@@ -21,8 +21,20 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Import Code Signing Certificate (Optional)
+        if: ${{ secrets.CODESIGN_CERT_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String("${{ secrets.CODESIGN_CERT_PFX_BASE64 }}"))
+          "CODESIGN_CERT_PATH=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Build EXE
         shell: pwsh
+        env:
+          CODESIGN_CERT_PATH: ${{ env.CODESIGN_CERT_PATH }}
+          CODESIGN_CERT_PASSWORD: ${{ secrets.CODESIGN_CERT_PASSWORD }}
+          CODESIGN_TIMESTAMP_URL: ${{ vars.CODESIGN_TIMESTAMP_URL }}
         run: ./build_exe.ps1
 
       - name: Upload Multi-File EXE

@@ -14,10 +14,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -38,7 +38,7 @@ jobs:
         run: ./build_exe.ps1
 
       - name: Upload Multi-File EXE
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: SteamGameBatchRecover-multifile
           path: dist/SteamGameBatchRecover/**
@@ -46,7 +46,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Single-File EXE
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: SteamGameBatchRecover-standalone
           path: dist/SteamGameBatchRecover-standalone.exe

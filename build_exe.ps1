@@ -101,7 +101,7 @@ Write-Host "Building multi-file version..."
   --hidden-import PIL.ImageGrab `
   --hidden-import pygetwindow `
   --hidden-import mouseinfo `
-  --add-data "SteamGUI_material;SteamGUI_material" `
+  --add-data "SteamGUI_material:SteamGUI_material" `
   main.py
 
 if ($LASTEXITCODE -ne 0) {
@@ -122,12 +122,12 @@ Write-Host "Building single-file version..."
   --hidden-import PIL.ImageGrab `
   --hidden-import pygetwindow `
   --hidden-import mouseinfo `
-  --add-data "SteamGUI_material;SteamGUI_material" `
+  --add-data "SteamGUI_material:SteamGUI_material" `
   main.py
 
 if ($LASTEXITCODE -ne 0) {
   throw "PyInstaller single-file build failed with exit code $LASTEXITCODE"
-}
+
 
 $multiFileExe = Join-Path $PSScriptRoot "dist\SteamGameBatchRecover\SteamGameBatchRecover.exe"
 $singleFileExe = Join-Path $PSScriptRoot "dist\SteamGameBatchRecover-standalone.exe"

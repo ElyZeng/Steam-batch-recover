@@ -279,6 +279,8 @@ class SteamBatchRecoverApp(tk.Tk):
                 self.geometry(f"+{win_x}+{win_y}")
         except Exception:
             pass
+
+    def _configure_styles(self) -> None:
         style = ttk.Style(self)
         style.theme_use("clam")
 

@@ -35,7 +35,7 @@ jobs:
           CODESIGN_CERT_PATH: ${{ env.CODESIGN_CERT_PATH }}
           CODESIGN_CERT_PASSWORD: ${{ secrets.CODESIGN_CERT_PASSWORD }}
           CODESIGN_TIMESTAMP_URL: ${{ vars.CODESIGN_TIMESTAMP_URL }}
-        run: ./build_exe.ps1
+        run: powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\build_exe.ps1
 
       - name: Upload Multi-File EXE
         uses: actions/upload-artifact@v4

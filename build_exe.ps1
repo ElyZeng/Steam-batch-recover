@@ -127,6 +127,7 @@ Write-Host "Building single-file version..."
 
 if ($LASTEXITCODE -ne 0) {
   throw "PyInstaller single-file build failed with exit code $LASTEXITCODE"
+}
 
 
 $multiFileExe = Join-Path $PSScriptRoot "dist\SteamGameBatchRecover\SteamGameBatchRecover.exe"

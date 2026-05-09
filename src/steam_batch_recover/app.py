@@ -249,13 +249,36 @@ class SteamBatchRecoverApp(tk.Tk):
     def _set_initial_geometry(self) -> None:
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        width = min(1380, max(1080, screen_width - 80))
-        height = min(840, max(680, screen_height - 120))
+        width = min(1380, max(1080, screen_width - 100))
+        height = min(840, max(680, screen_height - 180))
         pos_x = max(0, (screen_width - width) // 2)
         pos_y = max(0, (screen_height - height) // 2)
         self.geometry(f"{width}x{height}+{pos_x}+{pos_y}")
+        self.after(500, self._adjust_geometry_if_needed)
 
-    def _configure_styles(self) -> None:
+    def _adjust_geometry_if_needed(self) -> None:
+        """Check if window extends beyond screen bounds and adjust if needed (for dynamic taskbars)."""
+        try:
+            self.update_idletasks()
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            win_width = self.winfo_width()
+            win_height = self.winfo_height()
+            win_x = self.winfo_x()
+            win_y = self.winfo_y()
+
+            adjusted = False
+            if win_y + win_height > screen_height:
+                win_y = max(0, screen_height - win_height - 30)
+                adjusted = True
+            if win_x + win_width > screen_width:
+                win_x = max(0, screen_width - win_width - 30)
+                adjusted = True
+
+            if adjusted:
+                self.geometry(f"+{win_x}+{win_y}")
+        except Exception:
+            pass
         style = ttk.Style(self)
         style.theme_use("clam")
 
@@ -433,6 +456,7 @@ class SteamBatchRecoverApp(tk.Tk):
         content_card.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 12))
         content_card.columnconfigure(0, weight=1)
         content_card.rowconfigure(2, weight=1)
+        content_card.minsize(0, 400)
 
         self.content_title = ttk.Label(content_card, style="CardTitle.TLabel")
         self.content_title.grid(row=0, column=0, sticky="w")
@@ -943,9 +967,9 @@ class SteamBatchRecoverApp(tk.Tk):
             return
 
         self._restore_geometry = self.geometry()
-        width = self.winfo_screenwidth()
-        height = self.winfo_screenheight() - 1
-        self.geometry(f"{width}x{height}+0+0")
+        width = self.winfo_screenwidth() - 80
+        height = self.winfo_screenheight() - 100
+        self.geometry(f"{width}x{height}+40+40")
         self._is_maximized = True
         self.max_button.configure(text="❐")
 

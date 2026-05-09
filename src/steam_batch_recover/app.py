@@ -457,8 +457,7 @@ class SteamBatchRecoverApp(tk.Tk):
         content_card = ttk.Frame(body, style="Card.TFrame", padding=18)
         content_card.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 12))
         content_card.columnconfigure(0, weight=1)
-        content_card.rowconfigure(2, weight=1)
-        content_card.minsize(0, 400)
+        content_card.rowconfigure(2, weight=1, minsize=300)
 
         self.content_title = ttk.Label(content_card, style="CardTitle.TLabel")
         self.content_title.grid(row=0, column=0, sticky="w")

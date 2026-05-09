@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import threading
 import tkinter as tk
+from ctypes import Structure, byref, windll
+from ctypes import wintypes
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
@@ -247,32 +249,64 @@ class SteamBatchRecoverApp(tk.Tk):
             self._append_log(self._t("using_target_library", path=self.target_library_var.get().strip()))
 
     def _set_initial_geometry(self) -> None:
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        width = min(1380, max(1080, screen_width - 100))
-        height = min(840, max(680, screen_height - 180))
-        pos_x = max(0, (screen_width - width) // 2)
-        pos_y = max(0, (screen_height - height) // 2)
+        left, top, right, bottom = self._get_work_area()
+        work_width = max(1, right - left)
+        work_height = max(1, bottom - top)
+        width = min(1380, max(980, work_width - 80))
+        height = min(840, max(620, work_height - 90))
+        pos_x = left + max(0, (work_width - width) // 2)
+        pos_y = top + max(0, (work_height - height) // 2)
         self.geometry(f"{width}x{height}+{pos_x}+{pos_y}")
         self.after(500, self._adjust_geometry_if_needed)
+
+    def _get_work_area(self) -> tuple[int, int, int, int]:
+        class RECT(Structure):
+            _fields_ = [
+                ("left", wintypes.LONG),
+                ("top", wintypes.LONG),
+                ("right", wintypes.LONG),
+                ("bottom", wintypes.LONG),
+            ]
+
+        rect = RECT()
+        spi_get_workarea = 0x0030
+        try:
+            success = windll.user32.SystemParametersInfoW(spi_get_workarea, 0, byref(rect), 0)
+            if success:
+                return (rect.left, rect.top, rect.right, rect.bottom)
+        except Exception:
+            pass
+
+        return (0, 0, self.winfo_screenwidth(), self.winfo_screenheight())
 
     def _adjust_geometry_if_needed(self) -> None:
         """Check if window extends beyond screen bounds and adjust if needed (for dynamic taskbars)."""
         try:
             self.update_idletasks()
-            screen_width = self.winfo_screenwidth()
-            screen_height = self.winfo_screenheight()
+            left, top, right, bottom = self._get_work_area()
             win_width = self.winfo_width()
             win_height = self.winfo_height()
             win_x = self.winfo_x()
             win_y = self.winfo_y()
 
             adjusted = False
-            if win_y + win_height > screen_height:
-                win_y = max(0, screen_height - win_height - 30)
+            min_x = left
+            max_x = max(left, right - win_width)
+            min_y = top
+            max_y = max(top, bottom - win_height)
+
+            if win_x < min_x:
+                win_x = min_x
                 adjusted = True
-            if win_x + win_width > screen_width:
-                win_x = max(0, screen_width - win_width - 30)
+            elif win_x > max_x:
+                win_x = max_x
+                adjusted = True
+
+            if win_y < min_y:
+                win_y = min_y
+                adjusted = True
+            elif win_y > max_y:
+                win_y = max_y
                 adjusted = True
 
             if adjusted:
@@ -953,6 +987,30 @@ class SteamBatchRecoverApp(tk.Tk):
             return
         x = event.x_root - self._drag_offset_x
         y = event.y_root - self._drag_offset_y
+
+        left, top, right, bottom = self._get_work_area()
+        width = self.winfo_width()
+        height = self.winfo_height()
+
+        min_x = left
+        max_x = max(left, right - width)
+        min_y = top
+        max_y = max(top, bottom - height)
+
+        x = max(min_x, min(x, max_x))
+        y = max(min_y, min(y, max_y))
+
+        snap_distance = 14
+        if abs(x - left) <= snap_distance:
+            x = left
+        elif abs((x + width) - right) <= snap_distance:
+            x = right - width
+
+        if abs(y - top) <= snap_distance:
+            y = top
+        elif abs((y + height) - bottom) <= snap_distance:
+            y = bottom - height
+
         self.geometry(f"+{x}+{y}")
 
     def _minimize_window(self) -> None:
@@ -968,9 +1026,10 @@ class SteamBatchRecoverApp(tk.Tk):
             return
 
         self._restore_geometry = self.geometry()
-        width = self.winfo_screenwidth() - 80
-        height = self.winfo_screenheight() - 100
-        self.geometry(f"{width}x{height}+40+40")
+        left, top, right, bottom = self._get_work_area()
+        width = max(200, right - left)
+        height = max(200, bottom - top)
+        self.geometry(f"{width}x{height}+{left}+{top}")
         self._is_maximized = True
         self.max_button.configure(text="❐")
 

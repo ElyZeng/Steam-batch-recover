@@ -232,8 +232,11 @@ class SteamBatchRecoverApp(tk.Tk):
         self._progress_mode = "idle"
         self._progress_total = 0
         self._progress_current = 0
+        self._is_busy = False
         self.backups: list[GameBackup] = []
         self.current_view = "none"
+        self._installed_scan_cache: list[GameBackup] | None = None
+        self._repository_scan_cache: dict[str, list[GameBackup]] = {}
 
         self._set_initial_geometry()
         self._configure_styles()
@@ -475,6 +478,8 @@ class SteamBatchRecoverApp(tk.Tk):
         self.open_paths_button = ttk.Button(actions_card, command=self._open_selected_paths, style="Intel.TButton")
         self.open_paths_button.grid(row=8, column=0, sticky="ew")
 
+        self._refresh_operation_buttons()
+
         log_card = ttk.Frame(body, style="Card.TFrame", padding=18)
         log_card.grid(row=1, column=1, sticky="nsew", pady=(12, 0))
         log_card.columnconfigure(0, weight=1)
@@ -515,6 +520,9 @@ class SteamBatchRecoverApp(tk.Tk):
             self._refresh_space_summary()
 
     def _scan_installed(self) -> None:
+        if self._installed_scan_cache is not None:
+            self._scan_completed(list(self._installed_scan_cache), view="installed")
+            return
         self._set_busy(True, self._t("status_scanning"))
         threading.Thread(target=self._scan_installed_worker, daemon=True).start()
 
@@ -524,12 +532,17 @@ class SteamBatchRecoverApp(tk.Tk):
         except Exception as exc:  # noqa: BLE001
             self.after(0, lambda: self._operation_failed(exc))
             return
+        self._installed_scan_cache = list(backups)
         self.after(0, lambda: self._scan_completed(backups, view="installed"))
 
     def _scan_repository(self) -> None:
         repository_text = self.repository_var.get().strip()
         if not repository_text:
             messagebox.showerror(self._t("missing_repository_title"), self._t("missing_repository"))
+            return
+        cached = self._repository_scan_cache.get(repository_text)
+        if cached is not None:
+            self._scan_completed(list(cached), view="repository")
             return
         self._set_busy(True, self._t("status_scanning"))
         threading.Thread(target=self._scan_repository_worker, args=(Path(repository_text),), daemon=True).start()
@@ -540,6 +553,7 @@ class SteamBatchRecoverApp(tk.Tk):
         except Exception as exc:  # noqa: BLE001
             self.after(0, lambda: self._operation_failed(exc))
             return
+        self._repository_scan_cache[str(repository_root)] = list(backups)
         self.after(0, lambda: self._scan_completed(backups, view="repository"))
 
     def _scan_completed(self, backups: list[GameBackup], view: str) -> None:
@@ -623,6 +637,12 @@ class SteamBatchRecoverApp(tk.Tk):
         self.after(0, lambda: self._operation_completed("restore", len(selected)))
 
     def _operation_completed(self, operation: str, count: int) -> None:
+        if operation == "backup":
+            # Repository entries changed, force a fresh repository scan next time.
+            self._repository_scan_cache.clear()
+        elif operation == "restore":
+            # Installed game state may have changed after restore.
+            self._installed_scan_cache = None
         self._set_busy(False, self._t("status_ready"))
         key = "backup_complete" if operation == "backup" else "restore_complete"
         self._append_log(self._t(key, count=count))
@@ -733,12 +753,37 @@ class SteamBatchRecoverApp(tk.Tk):
         else:
             self.summary_var.set(self._t("no_scan"))
 
+    def _refresh_operation_buttons(self) -> None:
+        if self._is_busy:
+            self.scan_installed_button.configure(state="disabled")
+            self.scan_repository_button.configure(state="disabled")
+            self.backup_selected_button.configure(state="disabled")
+            self.restore_selected_button.configure(state="disabled")
+            return
+
+        self.scan_installed_button.configure(state="normal")
+        self.scan_repository_button.configure(state="normal")
+
+        if self.current_view == "installed":
+            self.backup_selected_button.configure(state="normal")
+            self.restore_selected_button.configure(state="disabled")
+            return
+
+        if self.current_view == "repository":
+            self.backup_selected_button.configure(state="disabled")
+            self.restore_selected_button.configure(state="normal")
+            return
+
+        self.backup_selected_button.configure(state="disabled")
+        self.restore_selected_button.configure(state="disabled")
+
     def _kind_label(self, kind: BackupKind) -> str:
         if kind is BackupKind.INSTALLED_GAME:
             return self._t("backup_kind_installed")
         return self._t("backup_kind_repository")
 
     def _set_busy(self, busy: bool, status: str) -> None:
+        self._is_busy = busy
         self.status_var.set(status)
         if busy:
             if self._progress_mode == "determinate":
@@ -755,6 +800,7 @@ class SteamBatchRecoverApp(tk.Tk):
             self._progress_total = 0
             self._progress_current = 0
             self.status_chip.configure(bg="#1a3558")
+        self._refresh_operation_buttons()
 
     def _prepare_progress(self, total_steps: int) -> None:
         self._progress_mode = "determinate"

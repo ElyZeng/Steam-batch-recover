@@ -25,6 +25,10 @@
 - [x] Ensure Documentation is Complete
   Summary: Updated [README.md](README.md) with run steps and usage flow. Cleaned this file by removing HTML comments.
 
+- [x] Capture Long-term Development Skill
+  Summary: Added [\.github\steam-batch-recover.skill.md](.github/steam-batch-recover.skill.md) with stable rules for mode logic, scan cache, window behavior, styling, and CI build safety.
+
 - Work through each checklist item systematically.
 - Keep communication concise and focused.
 - Follow development best practices.
+- Treat [\.github\steam-batch-recover.skill.md](.github/steam-batch-recover.skill.md) as the primary implementation playbook for future changes.

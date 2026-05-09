@@ -234,6 +234,7 @@ class SteamBatchRecoverApp(tk.Tk):
         self._progress_mode = "idle"
         self._progress_total = 0
         self._progress_current = 0
+        self._progress_started_at: datetime | None = None
         self._is_busy = False
         self.backups: list[GameBackup] = []
         self.current_view = "none"
@@ -245,6 +246,7 @@ class SteamBatchRecoverApp(tk.Tk):
         self._build_layout()
         self._apply_locale()
         self.bind("<Map>", self._on_window_map)
+        self.after(0, self._ensure_appwindow_style)
         if self.target_library_var.get().strip():
             self._append_log(self._t("using_target_library", path=self.target_library_var.get().strip()))
 
@@ -311,6 +313,36 @@ class SteamBatchRecoverApp(tk.Tk):
 
             if adjusted:
                 self.geometry(f"+{win_x}+{win_y}")
+        except Exception:
+            pass
+
+    def _ensure_appwindow_style(self) -> None:
+        """Keep taskbar and Alt+Tab presence even with custom overrideredirect title bar."""
+        try:
+            gswl_exstyle = -20
+            ws_ex_appwindow = 0x00040000
+            ws_ex_toolwindow = 0x00000080
+            swp_nosize = 0x0001
+            swp_nomove = 0x0002
+            swp_nozorder = 0x0004
+            swp_framechanged = 0x0020
+
+            hwnd = windll.user32.GetParent(self.winfo_id())
+            if not hwnd:
+                return
+
+            ex_style = windll.user32.GetWindowLongW(hwnd, gswl_exstyle)
+            ex_style = (ex_style | ws_ex_appwindow) & ~ws_ex_toolwindow
+            windll.user32.SetWindowLongW(hwnd, gswl_exstyle, ex_style)
+            windll.user32.SetWindowPos(
+                hwnd,
+                0,
+                0,
+                0,
+                0,
+                0,
+                swp_nomove | swp_nosize | swp_nozorder | swp_framechanged,
+            )
         except Exception:
             pass
 
@@ -846,6 +878,8 @@ class SteamBatchRecoverApp(tk.Tk):
         self.status_var.set(status)
         if busy:
             if self._progress_mode == "determinate":
+                if self._progress_started_at is None:
+                    self._progress_started_at = datetime.now()
                 self.progressbar.configure(mode="determinate")
             else:
                 self.progressbar.configure(mode="indeterminate")
@@ -858,6 +892,7 @@ class SteamBatchRecoverApp(tk.Tk):
             self._progress_mode = "idle"
             self._progress_total = 0
             self._progress_current = 0
+            self._progress_started_at = None
             self.status_chip.configure(bg="#1a3558")
         self._refresh_operation_buttons()
 
@@ -865,8 +900,18 @@ class SteamBatchRecoverApp(tk.Tk):
         self._progress_mode = "determinate"
         self._progress_total = max(1, total_steps)
         self._progress_current = 0
+        self._progress_started_at = datetime.now()
         self.progressbar.configure(mode="determinate", maximum=100, value=0)
-        self.progress_text_var.set("0%")
+        self.progress_text_var.set(f"0% (0/{self._progress_total})")
+
+    @staticmethod
+    def _format_eta(seconds: int) -> str:
+        safe = max(0, seconds)
+        minutes, sec = divmod(safe, 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours:
+            return f"{hours:d}:{minutes:02d}:{sec:02d}"
+        return f"{minutes:02d}:{sec:02d}"
 
     def _apply_progress_message(self, message: str) -> None:
         # message format: __PROGRESS__|current|total|operation|item_name
@@ -882,7 +927,13 @@ class SteamBatchRecoverApp(tk.Tk):
         self._progress_current = max(0, min(current, total))
         percent = (self._progress_current / self._progress_total) * 100
         self.progressbar.configure(mode="determinate", maximum=100, value=percent)
-        self.progress_text_var.set(f"{percent:.0f}%")
+        text = f"{percent:.0f}% ({self._progress_current}/{self._progress_total})"
+        if self._progress_started_at is not None and self._progress_current > 0:
+            elapsed = max(1, int((datetime.now() - self._progress_started_at).total_seconds()))
+            estimated_total = int((elapsed / self._progress_current) * self._progress_total)
+            remaining = max(0, estimated_total - elapsed)
+            text = f"{text} ETA {self._format_eta(remaining)}"
+        self.progress_text_var.set(text)
 
     def _t(self, key: str, **kwargs: object) -> str:
         template = LOCALE_DATA[self.locale_var.get()][key]
@@ -1036,6 +1087,7 @@ class SteamBatchRecoverApp(tk.Tk):
     def _on_window_map(self, _: tk.Event) -> None:
         if self.state() == "normal":
             self.overrideredirect(True)
+            self.after(0, self._ensure_appwindow_style)
 
     def _detect_default_target_library(self) -> str:
         libraries = find_steam_library_roots()

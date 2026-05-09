@@ -218,7 +218,7 @@ class SteamBatchRecoverApp(tk.Tk):
         self._drag_offset_x = 0
         self._drag_offset_y = 0
 
-        self.locale_var = tk.StringVar(value="zh-TW")
+        self.locale_var = tk.StringVar(value="en")
         self.repository_var = tk.StringVar()
         self.target_library_var = tk.StringVar(value=self._detect_default_target_library())
         self.status_var = tk.StringVar()
@@ -285,9 +285,9 @@ class SteamBatchRecoverApp(tk.Tk):
         style.configure("Intel.TCombobox", fieldbackground=entry_bg, background=entry_bg, foreground=text, bordercolor=border, arrowcolor=text)
         style.map("Intel.TCombobox", fieldbackground=[("readonly", entry_bg)], foreground=[("readonly", text)], bordercolor=[("focus", accent)])
         style.configure("Accent.TButton", background=accent, foreground="#04111d", padding=(14, 10), font=("Segoe UI Semibold", 10), borderwidth=0)
-        style.map("Accent.TButton", background=[("active", accent_active), ("pressed", "#0f8dd8")])
+        style.map("Accent.TButton", background=[("disabled", "#1a3558"), ("active", accent_active), ("pressed", "#0f8dd8")], foreground=[("disabled", "#4a6080")])
         style.configure("Intel.TButton", background=card, foreground=text, padding=(14, 10), font=("Segoe UI", 10), bordercolor=border, lightcolor=border, darkcolor=border)
-        style.map("Intel.TButton", background=[("active", "#1a3558"), ("pressed", "#102338")], bordercolor=[("focus", accent)])
+        style.map("Intel.TButton", background=[("disabled", "#0d1928"), ("active", "#1a3558"), ("pressed", "#102338")], foreground=[("disabled", "#4a6080")], bordercolor=[("focus", accent)])
         style.configure("Intel.Horizontal.TProgressbar", troughcolor="#0d1a2b", background=accent, bordercolor="#0d1a2b", lightcolor=accent, darkcolor=accent)
         style.configure(
             "Intel.Treeview",
@@ -465,16 +465,16 @@ class SteamBatchRecoverApp(tk.Tk):
         self.scan_installed_button.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         self.scan_repository_button = ttk.Button(actions_card, command=self._scan_repository, style="Intel.TButton")
         self.scan_repository_button.grid(row=2, column=0, sticky="ew", pady=(0, 10))
-        self.backup_selected_button = ttk.Button(actions_card, command=self._backup_selected, style="Accent.TButton")
-        self.backup_selected_button.grid(row=3, column=0, sticky="ew", pady=(8, 10))
-        self.restore_selected_button = ttk.Button(actions_card, command=self._restore_selected, style="Intel.TButton")
-        self.restore_selected_button.grid(row=4, column=0, sticky="ew", pady=(0, 10))
         self.select_all_button = ttk.Button(actions_card, command=self._select_all, style="Intel.TButton")
-        self.select_all_button.grid(row=5, column=0, sticky="ew", pady=(16, 10))
+        self.select_all_button.grid(row=3, column=0, sticky="ew", pady=(10, 10))
         self.clear_selection_button = ttk.Button(actions_card, command=self._clear_selection, style="Intel.TButton")
-        self.clear_selection_button.grid(row=6, column=0, sticky="ew", pady=(0, 10))
+        self.clear_selection_button.grid(row=4, column=0, sticky="ew", pady=(0, 10))
+        self.backup_selected_button = ttk.Button(actions_card, command=self._backup_selected, style="Accent.TButton")
+        self.backup_selected_button.grid(row=5, column=0, sticky="ew", pady=(10, 10))
+        self.restore_selected_button = ttk.Button(actions_card, command=self._restore_selected, style="Intel.TButton")
+        self.restore_selected_button.grid(row=6, column=0, sticky="ew", pady=(0, 10))
         self.copy_paths_button = ttk.Button(actions_card, command=self._copy_selected_paths, style="Intel.TButton")
-        self.copy_paths_button.grid(row=7, column=0, sticky="ew", pady=(16, 10))
+        self.copy_paths_button.grid(row=7, column=0, sticky="ew", pady=(10, 10))
         self.open_paths_button = ttk.Button(actions_card, command=self._open_selected_paths, style="Intel.TButton")
         self.open_paths_button.grid(row=8, column=0, sticky="ew")
 

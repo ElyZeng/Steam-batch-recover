@@ -43,6 +43,10 @@ def backup_games_to_repository(
 
         folder_name = f"{game.app_id}_{_safe_name(game.name)}"
         entry_dir = entries_dir / folder_name
+        if entry_dir.exists() and overwrite:
+            _emit(on_progress, f"Removing old backup entry: {entry_dir}")
+            shutil.rmtree(entry_dir)
+
         game_target = entry_dir / "common" / (game.install_dir_name or game.restore_subpath)
         manifest_target = entry_dir / game.manifest_path.name
 

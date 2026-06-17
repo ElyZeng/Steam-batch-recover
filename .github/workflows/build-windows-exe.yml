@@ -22,7 +22,7 @@ jobs:
           python-version: "3.12"
 
       - name: Import Code Signing Certificate (Optional)
-        if: ${{ secrets.CODESIGN_CERT_PFX_BASE64 != '' }}
+        if: ${{ secrets.CODESIGN_CERT_PFX_BASE64 }}
         shell: pwsh
         run: |
           $certPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"

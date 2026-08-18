@@ -2,11 +2,30 @@ name: Build Windows EXE
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish the built EXE files to a GitHub Release"
+        required: true
+        default: true
+        type: boolean
+      release_tag:
+        description: "Existing or new release tag to update"
+        required: true
+        default: "v1.1.0"
+        type: string
+      release_name:
+        description: "Release title"
+        required: true
+        default: "v1.1.0 - Portable Repository Names"
+        type: string
   push:
     branches:
       - test/steam-gui-1920x1200-150scale
     tags:
       - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   build-windows-exe:
@@ -54,3 +73,37 @@ jobs:
           path: dist/SteamGameBatchRecover-standalone.exe
           if-no-files-found: error
           retention-days: 14
+
+  publish-release:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release }}
+    needs: build-windows-exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Download Multi-File EXE
+        uses: actions/download-artifact@v4
+        with:
+          name: SteamGameBatchRecover-multifile
+          path: release/multifile
+
+      - name: Download Single-File EXE
+        uses: actions/download-artifact@v4
+        with:
+          name: SteamGameBatchRecover-standalone
+          path: release/standalone
+
+      - name: Package Multi-File EXE
+        shell: pwsh
+        run: Compress-Archive -Path release/multifile/* -DestinationPath release/SteamGameBatchRecover-multifile.zip -CompressionLevel Optimal
+
+      - name: Publish GitHub Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: ${{ inputs.release_name }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          overwrite_files: true
+          files: |
+            release/standalone/SteamGameBatchRecover-standalone.exe
+            release/SteamGameBatchRecover-multifile.zip

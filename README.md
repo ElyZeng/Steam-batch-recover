@@ -18,6 +18,7 @@ A Windows desktop tool for backing up installed Steam games into a portable repo
   - `manifest.json`
   - `entries/<app_id>_<name>/backup_manifest.json`
   - each manifest entry now includes `backup_time` so backup recency is visible on other machines
+  - `manifest.json` can store a repository name so external backup drives are distinguishable on any machine
 - Restores backed-up games by copying:
   - game files into `steamapps/common/<installdir>`
   - app manifests into `steamapps/appmanifest_<appid>.acf`
@@ -47,9 +48,10 @@ python main.py
 ### To create backups
 
 1. Choose a backup repository path.
-2. Click `Scan Installed Games`.
-3. Select one or more installed games.
-4. Click `Backup Selected`.
+2. Enter a descriptive repository name and click `Save`.
+3. Click `Scan Installed Games`.
+4. Select one or more installed games.
+5. Click `Backup Selected`.
 
 ### To restore on another machine
 
@@ -62,6 +64,7 @@ python main.py
 ## Notes
 
 - The repository path can be an external drive.
+- Repository names are stored in the repository's `manifest.json`, so the same name is available after the drive is connected to another computer. Existing repositories without a name show their folder name until one is saved.
 - The app checks free space before backup or restore and warns when space looks insufficient.
 - The target restore path should be a Steam library root, not the `steamapps/common` folder itself.
 - Steam may need a restart to refresh restored games after files and app manifests are copied.

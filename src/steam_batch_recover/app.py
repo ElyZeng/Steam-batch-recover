@@ -10,7 +10,13 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from .models import BackupKind, GameBackup
-from .restorer import backup_games_to_repository, get_free_space_bytes, restore_repository_backups
+from .restorer import (
+    backup_games_to_repository,
+    get_free_space_bytes,
+    get_repository_name,
+    restore_repository_backups,
+    set_repository_name,
+)
 from .scanner import find_steam_library_roots, scan_installed_games, scan_repository_backups
 
 
@@ -25,8 +31,10 @@ LOCALE_DATA = {
         "subtitle": "以倉庫與 manifest 管理跨機備份與還原流程",
         "language": "語言",
         "repository": "備份倉庫路徑",
+        "repository_name": "資料庫名稱",
         "target_library": "還原目標 Steam Library",
         "browse": "瀏覽",
+        "save": "儲存",
         "scan_installed": "掃描本機已安裝遊戲",
         "scan_repository": "掃描備份倉庫",
         "backup_selected": "備份選取項目",
@@ -44,6 +52,7 @@ LOCALE_DATA = {
         "processing_failed": "處理失敗: {error}",
         "missing_repository_title": "缺少備份倉庫路徑",
         "missing_repository": "請先選擇備份倉庫路徑。",
+        "repository_name_saved": "已將備份資料庫命名為：{name}",
         "missing_target_title": "缺少還原目標",
         "missing_target": "請先選擇還原目標 Steam Library 路徑。",
         "no_selection_title": "尚未選取",
@@ -87,8 +96,10 @@ LOCALE_DATA = {
         "subtitle": "以仓库与 manifest 管理跨机备份与还原流程",
         "language": "语言",
         "repository": "备份仓库路径",
+        "repository_name": "数据库名称",
         "target_library": "还原目标 Steam Library",
         "browse": "浏览",
+        "save": "保存",
         "scan_installed": "扫描本机已安装游戏",
         "scan_repository": "扫描备份仓库",
         "backup_selected": "备份所选项目",
@@ -106,6 +117,7 @@ LOCALE_DATA = {
         "processing_failed": "处理失败: {error}",
         "missing_repository_title": "缺少备份仓库路径",
         "missing_repository": "请先选择备份仓库路径。",
+        "repository_name_saved": "已将备份数据库命名为：{name}",
         "missing_target_title": "缺少还原目标",
         "missing_target": "请先选择还原目标 Steam Library 路径。",
         "no_selection_title": "尚未选择",
@@ -149,8 +161,10 @@ LOCALE_DATA = {
         "subtitle": "A manifest-driven repository workflow for cross-machine backup and restore.",
         "language": "Language",
         "repository": "Backup repository path",
+        "repository_name": "Repository name",
         "target_library": "Target Steam library",
         "browse": "Browse",
+        "save": "Save",
         "scan_installed": "Scan Installed Games",
         "scan_repository": "Scan Backup Repository",
         "backup_selected": "Backup Selected",
@@ -168,6 +182,7 @@ LOCALE_DATA = {
         "processing_failed": "Operation failed: {error}",
         "missing_repository_title": "Missing repository path",
         "missing_repository": "Choose a backup repository path first.",
+        "repository_name_saved": "Backup repository named: {name}",
         "missing_target_title": "Missing target library",
         "missing_target": "Choose a target Steam library path first.",
         "no_selection_title": "No selection",
@@ -222,6 +237,7 @@ class SteamBatchRecoverApp(tk.Tk):
 
         self.locale_var = tk.StringVar(value="en")
         self.repository_var = tk.StringVar()
+        self.repository_name_var = tk.StringVar()
         self.target_library_var = tk.StringVar(value=self._detect_default_target_library())
         self.status_var = tk.StringVar()
         self.summary_var = tk.StringVar()
@@ -487,12 +503,19 @@ class SteamBatchRecoverApp(tk.Tk):
         self.repository_browse_button = ttk.Button(controls_card, command=self._browse_repository, style="Intel.TButton")
         self.repository_browse_button.grid(row=2, column=2, sticky="ew", pady=(0, 10))
 
+        self.repository_name_label = ttk.Label(controls_card, style="Panel.TLabel")
+        self.repository_name_label.grid(row=3, column=0, sticky="w", pady=(0, 10))
+        self.repository_name_entry = ttk.Entry(controls_card, textvariable=self.repository_name_var, style="Intel.TEntry")
+        self.repository_name_entry.grid(row=3, column=1, sticky="ew", padx=12, pady=(0, 10))
+        self.repository_name_save_button = ttk.Button(controls_card, command=self._save_repository_name, style="Intel.TButton")
+        self.repository_name_save_button.grid(row=3, column=2, sticky="ew", pady=(0, 10))
+
         self.target_label = ttk.Label(controls_card, style="Panel.TLabel")
-        self.target_label.grid(row=3, column=0, sticky="w")
+        self.target_label.grid(row=4, column=0, sticky="w")
         self.target_entry = ttk.Entry(controls_card, textvariable=self.target_library_var, style="Intel.TEntry")
-        self.target_entry.grid(row=3, column=1, sticky="ew", padx=12)
+        self.target_entry.grid(row=4, column=1, sticky="ew", padx=12)
         self.target_browse_button = ttk.Button(controls_card, command=self._browse_target_library, style="Intel.TButton")
-        self.target_browse_button.grid(row=3, column=2, sticky="ew")
+        self.target_browse_button.grid(row=4, column=2, sticky="ew")
 
         metrics_card = ttk.Frame(dashboard, style="Card.TFrame", padding=18)
         metrics_card.grid(row=0, column=1, sticky="nsew")
@@ -601,7 +624,23 @@ class SteamBatchRecoverApp(tk.Tk):
         selected = filedialog.askdirectory(title=self._t("folder_dialog_repository"))
         if selected:
             self.repository_var.set(selected)
+            self.repository_name_var.set(get_repository_name(Path(selected)))
             self._refresh_space_summary()
+
+    def _save_repository_name(self) -> None:
+        repository_text = self.repository_var.get().strip()
+        if not repository_text:
+            messagebox.showerror(self._t("missing_repository_title"), self._t("missing_repository"))
+            return
+
+        try:
+            repository_name = set_repository_name(Path(repository_text), self.repository_name_var.get())
+        except (OSError, ValueError) as exc:
+            messagebox.showerror(self._t("title"), str(exc))
+            return
+
+        self.repository_name_var.set(repository_name)
+        self._append_log(self._t("repository_name_saved", name=repository_name))
 
     def _browse_target_library(self) -> None:
         selected = filedialog.askdirectory(title=self._t("folder_dialog_target"))
@@ -631,6 +670,7 @@ class SteamBatchRecoverApp(tk.Tk):
         if not repository_text:
             messagebox.showerror(self._t("missing_repository_title"), self._t("missing_repository"))
             return
+        self.repository_name_var.set(get_repository_name(Path(repository_text)))
         cached = self._repository_scan_cache.get(repository_text)
         if cached is not None:
             self._scan_completed(list(cached), view="repository")
@@ -947,8 +987,10 @@ class SteamBatchRecoverApp(tk.Tk):
         self.hero_subtitle.configure(text=self._t("hero_secondary"))
         self.language_label.configure(text=self._t("language"))
         self.repository_label.configure(text=self._t("repository"))
+        self.repository_name_label.configure(text=self._t("repository_name"))
         self.target_label.configure(text=self._t("target_library"))
         self.repository_browse_button.configure(text=self._t("browse"))
+        self.repository_name_save_button.configure(text=self._t("save"))
         self.target_browse_button.configure(text=self._t("browse"))
         self.scan_installed_button.configure(text=self._t("scan_installed"))
         self.scan_repository_button.configure(text=self._t("scan_repository"))

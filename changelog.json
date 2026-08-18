@@ -1,0 +1,343 @@
+[
+  {
+    "phase": "phase-0",
+    "session": 1,
+    "description": "初始化專案：基礎 GUI + Windows EXE 自動打包流程",
+    "commits": [
+      { "hash": "1de5459", "message": "Initial Steam batch recover app with GUI and Windows exe build" },
+      { "hash": "2588e43", "message": "Add GitHub Actions Windows EXE build artifact pipeline" },
+      { "hash": "93db392", "message": "Update GitHub Actions to Node 24 compatible versions" },
+      { "hash": "288cd4b", "message": "Use upload-artifact v7 to remove Node 20 warning" },
+      { "hash": "5aec889", "message": "Add dual-version EXE packaging: multi-file and single-file" },
+      { "hash": "85fc565", "message": "Document dual-EXE versions and their use cases" }
+    ],
+    "changes": [
+      {
+        "file": "main.py",
+        "action": "create",
+        "detail": "初始版本：Python Tkinter GUI，可掃描 Steam 備份包並批次還原"
+      },
+      {
+        "file": ".github/workflows/build-windows-exe.yml",
+        "action": "create",
+        "detail": "GitHub Actions CI：push 或 tag 自動觸發，用 PyInstaller 打包 Windows EXE 並上傳為 Artifact"
+      },
+      {
+        "file": "build_exe.ps1",
+        "action": "create",
+        "detail": "本地打包腳本：支援 multi-file（快速啟動）與 single-file（portable）兩種版本"
+      },
+      {
+        "file": "README.md",
+        "action": "create",
+        "detail": "記錄雙版本 EXE 的差異與使用方式"
+      }
+    ]
+  },
+  {
+    "phase": "phase-1",
+    "session": 2,
+    "description": "Steam GUI 自動化：用 OpenCV 模板比對操作 Steam 界面執行備份還原",
+    "commits": [
+      { "hash": "4fee2d0", "message": "Add Steam GUI automation for batch restore with English templates" },
+      { "hash": "ed4bec4", "message": "Enable EXE artifacts for test automation branch" },
+      { "hash": "ace7a1e", "message": "Merge pull request #1 from ElyZeng/test/steam-gui-1920x1200-150scale" },
+      { "hash": "91c631f", "message": "Fix invalid artifact names on main branch builds" },
+      { "hash": "fa2b9a4", "message": "Fix template path resolution for frozen EXE and bundle SteamGUI_material" }
+    ],
+    "changes": [
+      {
+        "file": "src/steam_batch_recover/steam_gui_automator.py",
+        "action": "create",
+        "detail": "新增 Steam GUI 自動化模組：使用 OpenCV 模板比對定位 Steam 視窗元素，自動點擊「備份/還原遊戲」選單並執行精靈操作"
+      },
+      {
+        "file": "SteamGUI_material/en/",
+        "action": "create",
+        "detail": "加入英文介面的 OpenCV 比對模板圖片（Steam 圖示、選單項目等）"
+      },
+      {
+        "file": ".github/workflows/build-windows-exe.yml",
+        "action": "update",
+        "detail": "修正 Artifact 命名錯誤；新增 test automation 分支的 CI 觸發設定；修正 PyInstaller 打包時 SteamGUI_material 資源路徑解析失敗的問題"
+      }
+    ]
+  },
+  {
+    "phase": "phase-2",
+    "session": 3,
+    "description": "Steam GUI 自動化迭代改進：DPI 感知、多比例比對、調試工具、模板優化",
+    "commits": [
+      { "hash": "1da1eed", "message": "Fix double Steam launch, add window focus, debug screenshots, lower confidence for 150% DPI" },
+      { "hash": "ff2f56d", "message": "Add full debug console GUI and detailed automation step logging" },
+      { "hash": "ba822f0", "message": "Log unhandled automation exceptions with full traceback" },
+      { "hash": "964f18a", "message": "Bundle pyscreeze/pillow runtime deps for frozen automation builds" },
+      { "hash": "10572d7", "message": "Add multi-scale OpenCV matching and Alt+S fallback for Steam menu" },
+      { "hash": "fd32bef", "message": "Constrain Steam menu matching to top-left region and gate Browse on wizard" },
+      { "hash": "903b68b", "message": "Add keyboard-first restore wizard fallback before template click" },
+      { "hash": "6bdbeb8", "message": "Replace Alt+S with manual takeover fallback for Steam menu" },
+      { "hash": "1f2ce05", "message": "Keep Steam dropdown open by hovering into menu after click" },
+      { "hash": "b150738", "message": "Add resume-from-open-wizard mode for Steam restore automation" },
+      { "hash": "95e5c83", "message": "Prefer en_1 templates and support updated filename set" },
+      { "hash": "89f5b78", "message": "Add OpenCV template matching diagnostic tool" },
+      { "hash": "2f523ef", "message": "Package SteamTemplateTester utility and publish as CI artifact" },
+      { "hash": "454a524", "message": "Add en_1 template set and minimized taskbar template to repository" },
+      { "hash": "b18606f", "message": "Enable Windows DPI awareness to improve click coordinate accuracy" },
+      { "hash": "5dcf93c", "message": "Use red-box center anchors for non-PART templates and center for PART" },
+      { "hash": "c2198a4", "message": "Crop non-PART templates to red-box ROI for stable matching" },
+      { "hash": "d7217d9", "message": "Sync SteamTemplateTester with red-box ROI matching" },
+      { "hash": "1717c95", "message": "Improve cursor movement and menu interaction: smooth movement, menu persistence, Steam process check" },
+      { "hash": "ddf22d3", "message": "Fix missing _emit by restoring class method indentation" },
+      { "hash": "e5b43a4", "message": "Add per-run annotated debug artifacts for GUI matching" },
+      { "hash": "924ffb8", "message": "Fix Steam window targeting to avoid focusing app window" }
+    ],
+    "changes": [
+      {
+        "file": "src/steam_batch_recover/steam_gui_automator.py",
+        "action": "update",
+        "detail": "修正 Steam 重複啟動問題；加入視窗焦點確認；對 150% DPI 環境降低比對信心值閾值；新增偵錯截圖輸出；支援多比例 (multi-scale) OpenCV 比對；選單比對範圍限制在左上角區域；加入 Alt+S keboard fallback 和鍵盤優先精靈操作；加入手動接管 fallback（精靈已開啟時繼續）；hover 維持下拉選單開啟；加入 resume-from-open-wizard 模式；支援 en_1 模板集；修正 _emit 方法縮排導致遺失的 bug；新增 per-run 調試 artifact 輸出"
+      },
+      {
+        "file": "opencv_template_test.py",
+        "action": "create",
+        "detail": "獨立的 OpenCV 模板比對診斷工具（SteamTemplateTester），方便在不執行完整 GUI 流程下驗證模板圖片比對效果"
+      },
+      {
+        "file": "SteamGUI_material/en_1/",
+        "action": "create",
+        "detail": "加入更新版英文模板集 en_1，包含最小化工作列狀態的模板；模板改用紅框 ROI 裁切以提升比對穩定性"
+      },
+      {
+        "file": "build_exe.ps1",
+        "action": "update",
+        "detail": "新增 SteamTemplateTester 的 PyInstaller 打包段落"
+      },
+      {
+        "file": ".github/workflows/build-windows-exe.yml",
+        "action": "update",
+        "detail": "新增 SteamTemplateTester artifact 上傳步驟；修正凍結 EXE 的 pyscreeze/pillow 執行階段依賴打包問題；新增 Windows DPI 感知設定"
+      },
+      {
+        "file": "Debug data/",
+        "action": "create",
+        "detail": "新增 per-run 調試資料夾結構，儲存每次 GUI 自動化執行時的截圖與比對結果 json"
+      }
+    ]
+  },
+  {
+    "phase": "phase-3",
+    "session": 4,
+    "description": "架構改造：Steam GUI 自動化 → 以 manifest 管理的備份倉庫系統",
+    "commits": [
+      { "hash": "cd165cf", "message": "Rewrite architecture: manifest-based backup repository replacing Steam GUI automation" }
+    ],
+    "changes": [
+      {
+        "file": "src/steam_batch_recover/models.py",
+        "action": "rewrite",
+        "detail": "新增 BackupKind enum（INSTALLED_GAME / REPOSITORY_BACKUP），重寫 GameBackup dataclass，支援跨機備份所需的所有欄位"
+      },
+      {
+        "file": "src/steam_batch_recover/scanner.py",
+        "action": "rewrite",
+        "detail": "新增 scan_installed_games()：讀取 appmanifest_*.acf 掃描本地已安裝遊戲；新增 scan_repository_backups()：讀取 manifest.json 及 entries/*/backup_manifest.json；新增 find_steam_library_roots()：查詢登錄檔 + 解析 libraryfolders.vdf"
+      },
+      {
+        "file": "src/steam_batch_recover/restorer.py",
+        "action": "rewrite",
+        "detail": "新增 backup_games_to_repository()：複製遊戲資料夾並產生 backup_manifest.json；新增 restore_repository_backups()：將備份複製到目標 Steam library；新增 _write_repository_manifest()：管理根目錄的 manifest.json 合併與排序"
+      },
+      {
+        "file": "src/steam_batch_recover/app.py",
+        "action": "rewrite",
+        "detail": "UI 改為對應新流程：掃描已安裝遊戲、掃描備份倉庫、備份選取項目、從倉庫還原"
+      },
+      {
+        "file": "README.md",
+        "action": "update",
+        "detail": "更新說明：描述新的 manifest 備份倉庫架構與操作流程"
+      }
+    ]
+  },
+  {
+    "phase": "phase-4",
+    "session": 5,
+    "description": "UI 大改版（Intel Graphics 深色風格）+ 備份時間戳記",
+    "commits": [
+      { "hash": "e0a86ce", "message": "Add backup timestamps and redesign UI as dark control center" }
+    ],
+    "changes": [
+      {
+        "file": "src/steam_batch_recover/models.py",
+        "action": "update",
+        "detail": "GameBackup dataclass 新增 backup_time 欄位（ISO 8601 含時區）"
+      },
+      {
+        "file": "src/steam_batch_recover/restorer.py",
+        "action": "update",
+        "detail": "backup_games_to_repository() 在寫入 backup_manifest.json 時加入 backup_time = datetime.now().astimezone().isoformat(timespec='seconds')"
+      },
+      {
+        "file": "src/steam_batch_recover/app.py",
+        "action": "rewrite",
+        "detail": "完整重設計 UI 為 Intel Graphics Command Center 風格：背景 #0a1423、強調色 #19a7ff、英雄區段、看板卡片（controls card / metrics card）、深色 TreeView、操作紀錄面板；加入三語言（zh-TW / zh-CN / en）locale"
+      },
+      {
+        "file": "README.md",
+        "action": "update",
+        "detail": "補充說明 backup_time 欄位存在於每筆 manifest 記錄中"
+      }
+    ]
+  },
+  {
+    "phase": "phase-5",
+    "session": 6,
+    "description": "UX 精修：自訂標題列、上次更新時間顯示、視窗自適應尺寸 + 移除 SteamTemplateTester 打包",
+    "commits": [
+      { "hash": "8ef9ea3", "message": "Refine desktop UX and stop building SteamTemplateTester artifacts" }
+    ],
+    "changes": [
+      {
+        "file": "src/steam_batch_recover/models.py",
+        "action": "update",
+        "detail": "GameBackup dataclass 新增 last_updated_time 欄位，用於顯示本地已安裝遊戲的上次更新時間"
+      },
+      {
+        "file": "src/steam_batch_recover/scanner.py",
+        "action": "update",
+        "detail": "新增 _resolve_last_updated_time()：從 appmanifest.acf 的 LastUpdated 欄位（Unix timestamp）轉換為 ISO 8601 字串，失敗時 fallback 為檔案的 stat().st_mtime"
+      },
+      {
+        "file": "src/steam_batch_recover/app.py",
+        "action": "update",
+        "detail": "三項修正：(1) 換成 overrideredirect=True 的自訂標題列，支援拖曳移動與最小化/最大化/關閉按鈕；(2) 本地已安裝遊戲改顯示「上次更新」而非「備份時間」，欄位標題依掃描模式動態切換；(3) 新增 _set_initial_geometry() 計算自適應視窗尺寸，避免超出螢幕底部"
+      },
+      {
+        "file": "build_exe.ps1",
+        "action": "update",
+        "detail": "移除 SteamTemplateTester 的 PyInstaller 打包段落"
+      },
+      {
+        "file": ".github/workflows/build-windows-exe.yml",
+        "action": "update",
+        "detail": "移除 SteamTemplateTester artifact 上傳步驟"
+      }
+    ]
+  },
+  {
+    "phase": "phase-6",
+    "session": 7,
+    "description": "TreeView 點擊改為 toggle 多選（不需按 Ctrl）",
+    "commits": [
+      { "hash": "80d9951", "message": "Implement toggle select for tree view - simple click to select/deselect without Ctrl" }
+    ],
+    "changes": [
+      {
+        "file": "src/steam_batch_recover/app.py",
+        "action": "update",
+        "detail": "TreeView 改為 selectmode='none'，新增 _on_tree_click() 以 Button-1 事件實作 toggle 選取邏輯：單擊選取、再點取消，無需 Ctrl 鍵"
+      }
+    ]
+  },
+  {
+    "phase": "phase-6",
+    "session": 8,
+    "description": "修正 TreeView 無法點擊問題（selectmode='none' 造成完全無法選取）",
+    "commits": [
+      { "hash": "8be5f68", "message": "Fix tree selection - restore extended selectmode with simple toggle click logic" }
+    ],
+    "changes": [
+      {
+        "file": "src/steam_batch_recover/app.py",
+        "action": "fix",
+        "detail": "selectmode 改回 'extended'，handler 重新命名為 _on_tree_simple_click()；toggle 邏輯修正為：點擊未選項目 → 取消其他全選、僅選此項；點擊已選項目 → 取消"
+      }
+    ]
+  },
+  {
+    "phase": "phase-6",
+    "session": 9,
+    "description": "修正 TreeView 連續多選失效（改用 selection_add / selection_remove）",
+    "commits": [
+      { "hash": "ab9eee8", "message": "Fix Treeview click toggling for reliable multi-select without Ctrl" }
+    ],
+    "changes": [
+      {
+        "file": "src/steam_batch_recover/app.py",
+        "action": "fix",
+        "detail": "捨棄傳 Python set 給 selection_set() 的做法（Tk 處理不穩定），改用 selection_add(item) 或 selection_remove(item) 逐項切換，同時加上 tree.focus(item) 與 tree.see(item) 保持視圖同步；實現真正的累積多選 toggle，無需 Ctrl 鍵"
+      }
+    ]
+  },
+  {
+    "phase": "phase-7",
+    "session": 10,
+    "description": "新增可選的 Authenticode 程式碼簽章流程（對應 SmartScreen 警告）",
+    "commits": [
+      { "hash": "3396f53", "message": "Add optional code-signing pipeline to reduce SmartScreen warnings" }
+    ],
+    "changes": [
+      {
+        "file": "build_exe.ps1",
+        "action": "update",
+        "detail": "新增 Get-SignToolPath()：自動尋找 signtool.exe（PATH 或 Windows SDK）；新增 Sign-Executable()：讀取 CODESIGN_CERT_PATH / CODESIGN_CERT_PASSWORD / CODESIGN_TIMESTAMP_URL 環境變數，使用 SHA256 + RFC3161 timestamp 對 EXE 簽章並驗證；未設定 CODESIGN_CERT_PATH 時自動跳過，不影響現有打包流程"
+      },
+      {
+        "file": ".github/workflows/build-windows-exe.yml",
+        "action": "update",
+        "detail": "新增可選步驟 'Import Code Signing Certificate'：當 secret CODESIGN_CERT_PFX_BASE64 存在時，將 base64 憑證內容寫入 runner temp 路徑並設為環境變數；Build EXE 步驟新增 env 區塊傳入 CODESIGN_CERT_PATH / CODESIGN_CERT_PASSWORD / CODESIGN_TIMESTAMP_URL"
+      },
+      {
+        "file": "README.md",
+        "action": "update",
+        "detail": "新增「SmartScreen Warning」章節：說明本地打包簽章的 PowerShell 環境變數設定方式，以及在 GitHub Secrets 加入 CODESIGN_CERT_PFX_BASE64 / CODESIGN_CERT_PASSWORD 的步驟；補充 OV vs EV 憑證的信譽建立差異說明"
+      }
+    ]
+  },
+  {
+    "phase": "phase-8",
+    "session": 11,
+    "description": "修復 GitHub Actions Windows EXE workflow：排除腳本執行政策與 workflow 解析錯誤，CI 重新成功",
+    "commits": [
+      { "hash": "8689b7b", "message": "Update GitHub Actions to use stable versions (v4/v5 instead of v5/v6/v7)" },
+      { "hash": "44f0c39", "message": "Fix: PyInstaller --add-data syntax for cross-platform compatibility (colon separator)" },
+      { "hash": "ac9b971", "message": "Fix Windows build script execution policy in CI" },
+      { "hash": "e9e6c16", "message": "Fix workflow secret check in if condition" }
+    ],
+    "changes": [
+      {
+        "file": ".github/workflows/build-windows-exe.yml",
+        "action": "fix",
+        "detail": "調整 actions 版本到穩定組合；Build EXE 步驟改為以 powershell -ExecutionPolicy Bypass -File 啟動 build_exe.ps1，避免 runner 執行政策造成腳本無法載入；修正 step-level if 不能直接使用 secrets 的問題，改由 job-level env 承接後再判斷，排除 workflow 解析錯誤"
+      },
+      {
+        "file": "build_exe.ps1",
+        "action": "fix",
+        "detail": "修正單檔打包段落的 PowerShell 大括號遺漏造成的解析錯誤；更新 --add-data 參數分隔符設定，與目前 CI 腳本保持一致"
+      }
+    ]
+  },
+  {
+    "phase": "phase-9",
+    "session": 12,
+    "description": "新增可攜式備份資料庫命名功能，便於區分多個外接硬碟",
+    "commits": [],
+    "changes": [
+      {
+        "file": "src/steam_batch_recover/restorer.py",
+        "action": "update",
+        "detail": "新增 repository_name metadata 的讀寫與驗證；備份重寫 manifest.json 時保留已設定的資料庫名稱。"
+      },
+      {
+        "file": "src/steam_batch_recover/app.py",
+        "action": "update",
+        "detail": "在備份倉庫路徑下方加入資料庫名稱欄位與儲存按鈕；選取或掃描倉庫時會載入已儲存名稱，舊倉庫則以資料夾名稱作為顯示值。"
+      },
+      {
+        "file": "README.md",
+        "action": "update",
+        "detail": "說明資料庫名稱儲存在可攜式 manifest.json，並新增命名操作步驟。"
+      }
+    ]
+  }
+]

@@ -12,6 +12,7 @@ from .models import BackupKind, GameBackup
 
 ProgressCallback = Callable[[str], None]
 SAFE_NAME_PATTERN = re.compile(r"[^A-Za-z0-9._ -]+")
+MAX_REPOSITORY_NAME_LENGTH = 80
 
 
 def get_free_space_bytes(path: Path) -> int:
@@ -19,6 +20,51 @@ def get_free_space_bytes(path: Path) -> int:
     if not target.exists():
         target = Path(path.anchor) if path.anchor else Path.cwd()
     return shutil.disk_usage(target).free
+
+
+def get_repository_name(repository_root: Path) -> str:
+    manifest_path = repository_root / "manifest.json"
+    fallback_name = repository_root.name or str(repository_root)
+    if not manifest_path.exists():
+        return fallback_name
+
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return fallback_name
+
+    if not isinstance(payload, dict):
+        return fallback_name
+    repository_name = payload.get("repository_name")
+    if not isinstance(repository_name, str):
+        return fallback_name
+    return repository_name.strip() or fallback_name
+
+
+def set_repository_name(repository_root: Path, repository_name: str) -> str:
+    normalized_name = " ".join(repository_name.split())
+    if not normalized_name:
+        raise ValueError("Repository name cannot be empty.")
+    if len(normalized_name) > MAX_REPOSITORY_NAME_LENGTH:
+        raise ValueError(f"Repository name cannot exceed {MAX_REPOSITORY_NAME_LENGTH} characters.")
+
+    repository_root.mkdir(parents=True, exist_ok=True)
+    manifest_path = repository_root / "manifest.json"
+    payload: dict[str, object] = {"version": 1, "entries": []}
+    if manifest_path.exists():
+        try:
+            existing_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Failed to read repository manifest: {manifest_path}") from exc
+        if not isinstance(existing_payload, dict):
+            raise ValueError(f"Repository manifest must contain a JSON object: {manifest_path}")
+        payload = existing_payload
+
+    payload["repository_name"] = normalized_name
+    payload.setdefault("version", 1)
+    payload.setdefault("entries", [])
+    manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return normalized_name
 
 
 def backup_games_to_repository(
@@ -101,12 +147,16 @@ def restore_repository_backups(
 def _write_repository_manifest(repository_root: Path, new_entries: list[dict[str, object]]) -> None:
     manifest_path = repository_root / "manifest.json"
     existing_entries: dict[str, dict[str, object]] = {}
+    repository_name: str | None = None
     if manifest_path.exists():
         try:
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
             for entry in payload.get("entries", []):
                 key = f"{entry.get('app_id', '')}:{entry.get('entry_folder', '')}"
                 existing_entries[key] = entry
+            stored_name = payload.get("repository_name")
+            if isinstance(stored_name, str) and stored_name.strip():
+                repository_name = stored_name.strip()
         except (OSError, json.JSONDecodeError):
             existing_entries = {}
 
@@ -118,6 +168,8 @@ def _write_repository_manifest(repository_root: Path, new_entries: list[dict[str
         "version": 1,
         "entries": sorted(existing_entries.values(), key=lambda item: (str(item.get("name", "")).lower(), str(item.get("app_id", "")))),
     }
+    if repository_name is not None:
+        payload["repository_name"] = repository_name
     manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 

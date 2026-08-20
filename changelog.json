@@ -339,5 +339,18 @@
         "detail": "說明資料庫名稱儲存在可攜式 manifest.json，並新增命名操作步驟。"
       }
     ]
+  },
+  {
+    "phase": "phase-10",
+    "session": 13,
+    "description": "新增遊戲清單欄位排序功能",
+    "commits": [],
+    "changes": [
+      {
+        "file": "src/steam_batch_recover/app.py",
+        "action": "fix",
+        "detail": "TreeView 的 Type、App ID、Game、Last Updated/Backup Time、Size 與 Source 欄位標題可點擊排序；再次點擊同一欄可切換升冪/降冪。App ID 與 Size 使用數值排序，並保留原有的資料列多選切換操作。"
+      }
+    ]
   }
 ]

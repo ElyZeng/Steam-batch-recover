@@ -256,6 +256,8 @@ class SteamBatchRecoverApp(tk.Tk):
         self.current_view = "none"
         self._installed_scan_cache: list[GameBackup] | None = None
         self._repository_scan_cache: dict[str, list[GameBackup]] = {}
+        self._sort_column: str | None = None
+        self._sort_descending = False
 
         self._set_initial_geometry()
         self._configure_styles()
@@ -564,6 +566,8 @@ class SteamBatchRecoverApp(tk.Tk):
         self.tree.column("backup_time", width=170, anchor="center")
         self.tree.column("size", width=120, anchor="e")
         self.tree.column("source", width=460)
+        for column in columns:
+            self.tree.heading(column, command=lambda value=column: self._sort_backups(value))
         self.tree.bind("<Button-1>", self._on_tree_simple_click)
         self.tree.bind("<<TreeviewSelect>>", lambda _: self._refresh_space_summary())
         tree_scrollbar = ttk.Scrollbar(content_card, orient="vertical", command=self.tree.yview)
@@ -711,7 +715,7 @@ class SteamBatchRecoverApp(tk.Tk):
         self.entries_stat_var.set(str(len(backups)))
         self.selected_stat_var.set("0")
         self.mode_var.set(self._t("mode_installed") if view == "installed" else self._t("mode_repository"))
-        self.tree.heading("backup_time", text=self._time_column_label())
+        self._update_tree_headings()
         self.summary_var.set(self._t("detected_summary", count=len(backups), selected=0))
         self._refresh_space_summary()
         self._append_log(self._t("scan_complete", count=len(backups)))
@@ -792,6 +796,9 @@ class SteamBatchRecoverApp(tk.Tk):
 
     def _on_tree_simple_click(self, event: tk.Event) -> str:
         """Toggle clicked row selection without requiring Ctrl, while keeping other selected rows."""
+        if self.tree.identify_region(event.x, event.y) == "heading":
+            return ""
+
         item = self.tree.identify_row(event.y)
         if not item:
             return "break"
@@ -806,6 +813,67 @@ class SteamBatchRecoverApp(tk.Tk):
         self.tree.see(item)
         self.after(0, self._refresh_space_summary)
         return "break"
+
+    def _sort_backups(self, column: str) -> None:
+        if column == self._sort_column:
+            self._sort_descending = not self._sort_descending
+        else:
+            self._sort_column = column
+            self._sort_descending = False
+
+        selected_ids = set(self.tree.selection())
+        self.backups.sort(key=lambda backup: self._sort_key(backup, column), reverse=self._sort_descending)
+        self._populate_tree()
+        self._update_tree_headings()
+        self.tree.selection_set([item_id for item_id in selected_ids if self.tree.exists(item_id)])
+        self._refresh_space_summary()
+
+    def _sort_key(self, backup: GameBackup, column: str) -> object:
+        if column == "kind":
+            return self._kind_label(backup.kind).casefold()
+        if column == "app_id":
+            return (0, int(backup.app_id)) if backup.app_id.isdigit() else (1, backup.app_id.casefold())
+        if column == "name":
+            return backup.name.casefold()
+        if column == "backup_time":
+            return self._display_time_value(backup).casefold()
+        if column == "size":
+            return backup.required_bytes
+        return str(backup.source_path).casefold()
+
+    def _populate_tree(self) -> None:
+        for item_id in self.tree.get_children():
+            self.tree.delete(item_id)
+
+        for backup in self.backups:
+            self.tree.insert(
+                "",
+                "end",
+                iid=self._row_id(backup),
+                values=(
+                    self._kind_label(backup.kind),
+                    backup.app_id,
+                    backup.name,
+                    self._display_time_value(backup),
+                    format_bytes(backup.required_bytes),
+                    str(backup.source_path),
+                ),
+            )
+
+    def _update_tree_headings(self) -> None:
+        labels = {
+            "kind": self._t("type"),
+            "app_id": self._t("app_id"),
+            "name": self._t("game"),
+            "backup_time": self._time_column_label(),
+            "size": self._t("size"),
+            "source": self._t("source_col"),
+        }
+        for column, label in labels.items():
+            indicator = ""
+            if column == self._sort_column:
+                indicator = " ▼" if self._sort_descending else " ▲"
+            self.tree.heading(column, text=f"{label}{indicator}")
 
     def _clear_selection(self) -> None:
         self.tree.selection_remove(self.tree.selection())
